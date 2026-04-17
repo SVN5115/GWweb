@@ -178,6 +178,10 @@
     transition: border-color 0.15s;
   }
   .file-item:hover { border-color: var(--accent); }
+  .file-item.checked { border-color: var(--accent); background: rgba(108,99,255,0.08); }
+  .file-cb { width:16px; height:16px; cursor:pointer; accent-color:var(--accent); flex-shrink:0; }
+  .bulk-bar { display:none; background:var(--surface); border:1px solid var(--accent); border-radius:var(--radius); padding:10px 16px; margin-bottom:12px; align-items:center; gap:10px; }
+  .bulk-bar.visible { display:flex; }
   .file-icon { font-size: 28px; flex-shrink: 0; width: 36px; text-align: center; }
   .file-img-thumb {
     width: 48px; height: 48px; object-fit: cover;
@@ -421,10 +425,19 @@
     <div class="progress-bar-bg"><div class="progress-bar" id="progress-bar"></div></div>
   </div>
 
+  <!-- 일괄 다운로드 바 -->
+  <div class="bulk-bar" id="bulk-bar">
+    <span id="bulk-count" style="font-size:13px;color:var(--text2);flex:1;">0개 선택됨</span>
+    <button onclick="downloadSelected()" style="padding:6px 16px;background:var(--accent);color:white;border:none;border-radius:7px;font-size:13px;cursor:pointer;font-family:inherit;">⬇ 선택 다운로드</button>
+    <button onclick="clearSelection()" style="padding:6px 12px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:7px;font-size:13px;cursor:pointer;font-family:inherit;">취소</button>
+  </div>
+
   <!-- 툴바 -->
   <div class="toolbar">
     <div class="folder-tabs" id="folder-tabs"></div>
     <button class="add-folder-btn" onclick="openAddFolder()">+ 폴더 추가</button>
+    <button class="add-folder-btn" onclick="deleteCurrentFolder()" id="del-folder-btn" style="display:none;border-color:#ff6b6b;color:#ff6b6b;">- 폴더 삭제</button>
+    <button class="add-folder-btn" onclick="toggleSelectAll()" id="select-all-btn">☐ 전체선택</button>
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
       <input class="search-input" type="text" id="search-input" placeholder="파일 검색..." oninput="renderFileList()">
@@ -589,6 +602,7 @@ function loadUserData() {
     } else {
       folders = ['기타'];
     }
+    if (!folders.includes('전체')) folders.unshift('전체');
     // 파일 로드
     sbQuery('user_files', 'user_id=eq.' + encodeURIComponent(currentUser) + '&order=uploaded_at.desc', function(e2, rows2) {
       fileList = (rows2||[]).map(function(r) {
@@ -847,9 +861,59 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-var folders = ['기타'];
+var folders = ['전체', '기타'];
 var fileList = [];
 var currentFolder = '전체';
+var selectedKeys = {};
+
+function updateBulkBar() {
+  var cnt = Object.keys(selectedKeys).length;
+  var bar = document.getElementById('bulk-bar');
+  var countEl = document.getElementById('bulk-count');
+  bar.classList.toggle('visible', cnt > 0);
+  countEl.textContent = cnt + '개 선택됨';
+  var btn = document.getElementById('select-all-btn');
+  if (btn) {
+    var visibleKeys = getCurrentVisibleKeys();
+    var allSelected = visibleKeys.length > 0 && visibleKeys.every(function(k){ return selectedKeys[k]; });
+    btn.textContent = allSelected ? '☑ 전체해제' : '☐ 전체선택';
+  }
+}
+function getCurrentVisibleKeys() {
+  var q = document.getElementById('search-input').value.toLowerCase();
+  return fileList.filter(function(f) {
+    var inFolder = currentFolder === '전체' || f.folder === currentFolder;
+    var inSearch = !q || f.name.toLowerCase().includes(q);
+    return inFolder && inSearch;
+  }).map(function(f){ return f.key; });
+}
+function toggleSelectAll() {
+  var keys = getCurrentVisibleKeys();
+  var allSelected = keys.every(function(k){ return selectedKeys[k]; });
+  keys.forEach(function(k){ if(allSelected) delete selectedKeys[k]; else selectedKeys[k]=true; });
+  renderFileList(); updateBulkBar();
+}
+function clearSelection() {
+  selectedKeys = {};
+  renderFileList(); updateBulkBar();
+}
+function downloadSelected() {
+  var keys = Object.keys(selectedKeys);
+  if (!keys.length) return;
+  var files = fileList.filter(function(f){ return selectedKeys[f.key]; });
+  var i = 0;
+  function next() {
+    if (i >= files.length) { clearSelection(); showToast(files.length + '개 다운로드 완료', 'success'); return; }
+    var f = files[i++];
+    fetch(f.url).then(function(res){ return res.blob(); }).then(function(blob){
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = f.name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(a.href); next(); }, 300);
+    }).catch(function(){ next(); });
+  }
+  next();
+}
 var moveTargetKey = null;
 
 // 토스트
@@ -893,7 +957,9 @@ function isImage(name) {
 // 폴더 저장
 function saveFolders() {
   if (!currentUser) return;
-  sbUpsert('user_folders', { user_id: currentUser, folders: folders });
+  // '전체'는 저장하지 않음 (항상 자동 추가)
+  var toSave = folders.filter(function(f){ return f !== '전체'; });
+  sbUpsert('user_folders', { user_id: currentUser, folders: toSave });
 }
 // 하위 호환용
 function save() { saveFolders(); }
@@ -902,13 +968,26 @@ function save() { saveFolders(); }
 function renderFolders() {
   var el = document.getElementById('folder-tabs');
   el.innerHTML = '';
-  folders.forEach(function(f) {
+  // '전체'는 항상 첫번째
+  var allFolders = ['전체'].concat(folders.filter(function(f){ return f !== '전체'; }));
+  allFolders.forEach(function(f) {
     var btn = document.createElement('button');
     btn.className = 'folder-tab' + (f === currentFolder ? ' active' : '');
     btn.textContent = f;
     btn.onclick = function() { currentFolder = f; renderFolders(); renderFileList(); };
+    // 파일 수 뱃지
+    var cnt = f === '전체' ? fileList.length : fileList.filter(function(x){ return x.folder===f; }).length;
+    if (cnt > 0) {
+      var badge = document.createElement('span');
+      badge.textContent = cnt;
+      badge.style.cssText = 'margin-left:5px;background:rgba(255,255,255,0.25);border-radius:999px;padding:1px 6px;font-size:10px;';
+      btn.appendChild(badge);
+    }
     el.appendChild(btn);
   });
+  // 삭제 버튼 표시: '전체','기타' 제외한 폴더 선택 시
+  var delBtn = document.getElementById('del-folder-btn');
+  if (delBtn) delBtn.style.display = (currentFolder !== '전체' && currentFolder !== '기타') ? 'inline-block' : 'none';
 }
 
 // 파일 목록 렌더
@@ -929,30 +1008,53 @@ function renderFileList() {
   el.innerHTML = '';
   list.forEach(function(f) {
     var item = document.createElement('div');
-    item.className = 'file-item';
+    item.className = 'file-item' + (selectedKeys[f.key] ? ' checked' : '');
+    item.dataset.key = f.key;
+
+    var cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.className = 'file-cb';
+    cb.checked = !!selectedKeys[f.key];
+    cb.addEventListener('change', function() {
+      if (cb.checked) selectedKeys[f.key] = true;
+      else delete selectedKeys[f.key];
+      item.classList.toggle('checked', cb.checked);
+      updateBulkBar();
+    });
 
     var icon = fileIcon(f.name);
-    var imgHtml = '';
+    var iconEl;
     if (!icon) {
-      imgHtml = '<img class="file-img-thumb" src="' + f.url + '" onclick="previewImg(\'' + f.url + '\')" style="cursor:zoom-in;">';
+      iconEl = document.createElement('img');
+      iconEl.className = 'file-img-thumb'; iconEl.src = f.url;
+      iconEl.style.cursor = 'zoom-in';
+      iconEl.onclick = function(){ previewImg(f.url); };
+    } else if (icon.startsWith && icon.startsWith('data:')) {
+      iconEl = document.createElement('img');
+      iconEl.src = icon; iconEl.style.cssText='width:36px;height:36px;object-fit:contain;flex-shrink:0;';
     } else {
-      imgHtml = '<div class="file-icon">' + icon + '</div>';
+      iconEl = document.createElement('div');
+      iconEl.className = 'file-icon'; iconEl.innerHTML = icon;
     }
 
-    item.innerHTML = imgHtml +
-      '<div class="file-info">' +
-        '<div class="file-name" title="' + f.name + '">' + f.name + '</div>' +
-        '<div class="file-meta">' +
-          '<span>' + fmtSize(f.size) + '</span>' +
-          '<span>' + f.date + '</span>' +
-          (f.folder !== '기타' ? '<span class="file-folder-badge">' + f.folder + '</span>' : '') +
-        '</div>' +
-      '</div>' +
-      '<div class="file-actions">' +
-        '<button class="file-btn" onclick="moveFile(\'' + f.key + '\')">📂 <span>이동</span></button>' +
-        '<button class="file-btn" onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\')">⬇ <span>다운</span></button>' +
-        '<button class="file-btn danger" onclick="deleteFile(\'' + f.key + '\')">🗑 <span>삭제</span></button>' +
+    var infoEl = document.createElement('div'); infoEl.className = 'file-info';
+    infoEl.innerHTML =
+      '<div class="file-name" title="' + f.name + '">' + f.name + '</div>' +
+      '<div class="file-meta">' +
+        '<span>' + fmtSize(f.size) + '</span>' +
+        '<span>' + f.date + '</span>' +
+        (f.folder !== '기타' ? '<span class="file-folder-badge">' + f.folder + '</span>' : '') +
       '</div>';
+
+    var actEl = document.createElement('div'); actEl.className = 'file-actions';
+    actEl.innerHTML =
+      '<button class="file-btn" onclick="moveFile(\'' + f.key + '\')">📂 <span>이동</span></button>' +
+      '<button class="file-btn" onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\')">⬇ <span>다운</span></button>' +
+      '<button class="file-btn danger" onclick="deleteFile(\'' + f.key + '\')">🗑 <span>삭제</span></button>';
+
+    item.appendChild(cb);
+    item.appendChild(iconEl);
+    item.appendChild(infoEl);
+    item.appendChild(actEl);
     el.appendChild(item);
   });
 }
@@ -1121,6 +1223,23 @@ function openAddFolder() {
 function closeFolderModal() {
   document.getElementById('folder-modal').classList.remove('visible');
 }
+function deleteCurrentFolder() {
+  if (currentFolder === '전체' || currentFolder === '기타') return;
+  var filesInFolder = fileList.filter(function(f){ return f.folder === currentFolder; });
+  var msg = '[' + currentFolder + '] 폴더를 삭제하시겠습니까?';
+  if (filesInFolder.length) msg += ' (폴더 내 파일 ' + filesInFolder.length + '개는 기타로 이동됩니다)';
+  if (!confirm(msg)) return;
+  // 파일들 기타로 이동
+  filesInFolder.forEach(function(f) {
+    f.folder = '기타';
+    if (f.dbId) sbUpsert('user_files', { id: f.dbId, user_id: currentUser, key: f.key, name: f.name, size: f.size, url: f.url, folder: '기타' });
+  });
+  folders = folders.filter(function(f){ return f !== currentFolder; });
+  currentFolder = '전체';
+  saveFolders(); renderFolders(); renderFileList();
+  showToast('폴더 삭제 완료', 'success');
+}
+
 function addFolder() {
   var name = document.getElementById('folder-name-input').value.trim();
   if (!name) return;
