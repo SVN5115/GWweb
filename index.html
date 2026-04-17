@@ -714,6 +714,7 @@ function loadAdminData() {
               (isExpired ? ' <span style="color:#ff6b6b;">만료됨</span>' : ' <span style="color:var(--accent2);">(' + daysLeft + '일 남음)</span>') +
             '</div>' +
           '</div>' +
+          '<button onclick="adminChangePw(this)" data-uid="' + acc.id + '" style="background:none;border:1px solid var(--accent);color:var(--accent);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">암호변경</button>' +
           '<button onclick="adminDeleteUser(this)" data-uid="' + acc.id + '" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">계정삭제</button>';
 
         // 파일 목록 (접기/펼치기)
@@ -768,6 +769,27 @@ function adminDeleteFile(el) {
     showToast('파일 삭제 완료', 'success');
     loadAdminData();
   });
+}
+function adminChangePw(el) {
+  var userId = el.dataset.uid;
+  var newPw = prompt('[' + userId + '] 새 비밀번호를 입력하세요 (4자 이상):');
+  if (!newPw) return;
+  if (newPw.length < 4) { alert('비밀번호는 4자 이상이어야 합니다.'); return; }
+  var xhr = new XMLHttpRequest();
+  xhr.open('PATCH', SUPABASE_URL + '/rest/v1/accounts?id=eq.' + encodeURIComponent(userId), true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('Prefer', 'return=minimal');
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    if (xhr.status >= 200 && xhr.status < 300) {
+      showToast('[' + userId + '] 비밀번호 변경 완료', 'success');
+    } else {
+      showToast('변경 실패: ' + xhr.responseText, 'error');
+    }
+  };
+  xhr.send(JSON.stringify({ pw_hash: simpleHash(newPw) }));
 }
 function adminDeleteUser(el) {
   var userId = el.dataset.uid;
