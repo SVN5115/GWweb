@@ -180,8 +180,8 @@
   .file-item:hover { border-color: var(--accent); }
   .file-item.checked { border-color: var(--accent); background: rgba(108,99,255,0.08); }
   .file-cb { width:16px; height:16px; cursor:pointer; accent-color:var(--accent); flex-shrink:0; }
-  .bulk-bar { display:none; background:var(--surface); border:1px solid var(--accent); border-radius:var(--radius); padding:10px 16px; margin-bottom:12px; align-items:center; gap:10px; }
-  .bulk-bar.visible { display:flex; }
+  .bulk-bar { display:flex; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:10px 16px; margin-bottom:12px; align-items:center; gap:10px; }
+  .bulk-bar.visible { border-color:var(--accent); }
   .file-icon { font-size: 28px; flex-shrink: 0; width: 36px; text-align: center; }
   .file-img-thumb {
     width: 48px; height: 48px; object-fit: cover;
@@ -427,6 +427,8 @@
 
   <!-- 일괄 다운로드 바 -->
   <div class="bulk-bar" id="bulk-bar">
+    <button onclick="toggleSelectAll()" id="select-all-btn2" style="padding:5px 12px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:7px;font-size:12px;cursor:pointer;font-family:inherit;">☐ 전체선택</button>
+    <button onclick="clearSelection()" style="padding:5px 12px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:7px;font-size:12px;cursor:pointer;font-family:inherit;">☐ 전체해제</button>
     <span id="bulk-count" style="font-size:13px;color:var(--text2);flex:1;">0개 선택됨</span>
     <button onclick="downloadSelected()" style="padding:6px 16px;background:var(--accent);color:white;border:none;border-radius:7px;font-size:13px;cursor:pointer;font-family:inherit;">⬇ 선택 다운로드</button>
     <button onclick="clearSelection()" style="padding:6px 12px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:7px;font-size:13px;cursor:pointer;font-family:inherit;">취소</button>
@@ -873,10 +875,12 @@ function updateBulkBar() {
   bar.classList.toggle('visible', cnt > 0);
   countEl.textContent = cnt + '개 선택됨';
   var btn = document.getElementById('select-all-btn');
-  if (btn) {
+  var btn2 = document.getElementById('select-all-btn2');
+  if (btn || btn2) {
     var visibleKeys = getCurrentVisibleKeys();
     var allSelected = visibleKeys.length > 0 && visibleKeys.every(function(k){ return selectedKeys[k]; });
-    btn.textContent = allSelected ? '☑ 전체해제' : '☐ 전체선택';
+    if (btn) btn.textContent = allSelected ? '☑ 전체해제' : '☐ 전체선택';
+    if (btn2) btn2.textContent = allSelected ? '☑ 전체해제' : '☐ 전체선택';
   }
 }
 function getCurrentVisibleKeys() {
