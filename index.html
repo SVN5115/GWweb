@@ -445,6 +445,41 @@ function sbInsert(table, data, cb) {
   };
   xhr.send(JSON.stringify(data));
 }
+function sbQuery(table, filter, cb) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', SUPABASE_URL + '/rest/v1/' + table + '?' + (filter||'') + '&select=*', true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    try { cb(null, JSON.parse(xhr.responseText)); } catch(e) { cb(e, []); }
+  };
+  xhr.send();
+}
+function sbUpsert(table, data, cb) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', SUPABASE_URL + '/rest/v1/' + table, true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('Prefer', 'resolution=merge-duplicates,return=minimal');
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    if (cb) cb(xhr.status >= 200 && xhr.status < 300 ? null : new Error(xhr.responseText));
+  };
+  xhr.send(JSON.stringify(data));
+}
+function sbDeleteRow(table, filter, cb) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('DELETE', SUPABASE_URL + '/rest/v1/' + table + '?' + filter, true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    if (cb) cb(xhr.status >= 200 && xhr.status < 300 ? null : new Error(xhr.responseText));
+  };
+  xhr.send();
+}
 function sbDeleteExpired() {
   var xhr = new XMLHttpRequest();
   xhr.open('DELETE', SUPABASE_URL + '/rest/v1/accounts?expires_at=lt.' + new Date().toISOString(), true);
@@ -473,7 +508,25 @@ function enterApp(userId) {
   document.getElementById('signup-screen').style.display = 'none';
   document.getElementById('app-wrap').style.display = 'block';
   document.getElementById('login-user-label').textContent = '👤 ' + userId;
-  renderFolders(); renderFileList(); updateStorageInfo();
+  loadUserData();
+}
+function loadUserData() {
+  // 폴더 로드
+  sbQuery('user_folders', 'user_id=eq.' + encodeURIComponent(currentUser), function(e, rows) {
+    if (rows && rows[0]) {
+      folders = rows[0].folders || ['기타'];
+      if (!folders.includes('기타')) folders.push('기타');
+    } else {
+      folders = ['기타'];
+    }
+    // 파일 로드
+    sbQuery('user_files', 'user_id=eq.' + encodeURIComponent(currentUser) + '&order=uploaded_at.desc', function(e2, rows2) {
+      fileList = (rows2||[]).map(function(r) {
+        return { key: r.key, name: r.name, size: r.size, url: r.url, date: r.uploaded_at ? r.uploaded_at.slice(0,10) : '', folder: r.folder||'기타', dbId: r.id };
+      });
+      renderFolders(); renderFileList(); updateStorageInfo();
+    });
+  });
 }
 function doLogout() {
   currentUser = null;
@@ -544,8 +597,8 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 });
 
-var folders = JSON.parse(localStorage.getItem('file_folders') || '["전체","기타"]');
-var fileList = JSON.parse(localStorage.getItem('file_list') || '[]');
+var folders = ['기타'];
+var fileList = [];
 var currentFolder = '전체';
 var moveTargetKey = null;
 
@@ -584,11 +637,13 @@ function isImage(name) {
   return ['jpg','jpeg','png','gif','webp'].includes(ext);
 }
 
-// 저장
-function save() {
-  localStorage.setItem('file_folders', JSON.stringify(folders));
-  localStorage.setItem('file_list', JSON.stringify(fileList));
+// 폴더 저장
+function saveFolders() {
+  if (!currentUser) return;
+  sbUpsert('user_folders', { user_id: currentUser, folders: folders });
 }
+// 하위 호환용
+function save() { saveFolders(); }
 
 // 폴더 탭 렌더
 function renderFolders() {
@@ -683,8 +738,11 @@ function uploadFiles(files) {
         var url = SUPABASE_URL + '/storage/v1/object/public/' + BUCKET + '/' + key;
         var now = new Date();
         var dateStr = now.getFullYear() + '-' + ('0'+(now.getMonth()+1)).slice(-2) + '-' + ('0'+now.getDate()).slice(-2);
-        fileList.unshift({ key: key, name: file.name, size: file.size, url: url, date: dateStr, folder: currentFolder === '전체' ? '기타' : currentFolder });
-        save();
+        var folder = currentFolder === '전체' ? '기타' : currentFolder;
+        var dbId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+        var fileRow = { id: dbId, user_id: currentUser, key: key, name: file.name, size: file.size, url: url, folder: folder };
+        sbUpsert('user_files', fileRow);
+        fileList.unshift({ key: key, name: file.name, size: file.size, url: url, date: dateStr, folder: folder, dbId: dbId });
         showToast(file.name + ' 업로드 완료!', 'success');
       } else {
         showToast(file.name + ' 업로드 실패 (' + xhr.status + ': ' + xhr.responseText.slice(0,80) + ')', 'error');
@@ -710,18 +768,19 @@ function downloadFile(url, name) {
 // 삭제
 function deleteFile(key) {
   if (!confirm('삭제하시겠습니까?')) return;
+  var f = fileList.find(function(x){ return x.key===key; });
+  // Storage 삭제
   var xhr = new XMLHttpRequest();
   xhr.open('DELETE', SUPABASE_URL + '/storage/v1/object/' + BUCKET, true);
   xhr.setRequestHeader('apikey', SUPABASE_KEY);
   xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
   xhr.setRequestHeader('Content-Type', 'application/json');
-  xhr.onreadystatechange = function() {
-    if (xhr.readyState !== 4) return;
-    fileList = fileList.filter(function(f){ return f.key !== key; });
-    save(); renderFileList(); updateStorageInfo();
-    showToast('삭제되었습니다');
-  };
   xhr.send(JSON.stringify({ prefixes: [key] }));
+  // DB 삭제
+  if (f && f.dbId) sbDeleteRow('user_files', 'id=eq.' + f.dbId);
+  fileList = fileList.filter(function(x){ return x.key !== key; });
+  renderFileList(); updateStorageInfo();
+  showToast('삭제되었습니다');
 }
 
 // 이동
@@ -735,8 +794,14 @@ function moveFile(key) {
     btn.style.cssText = 'width:100%;text-align:left;border-radius:8px;padding:10px 14px;';
     btn.textContent = f;
     btn.onclick = function() {
-      fileList.forEach(function(fi){ if(fi.key === moveTargetKey) fi.folder = f; });
-      save(); renderFileList();
+      var fi = fileList.find(function(x){ return x.key===moveTargetKey; });
+      if (fi) {
+        fi.folder = f;
+        if (fi.dbId) sbDeleteRow('user_files', 'id=eq.' + fi.dbId, function() {
+          sbUpsert('user_files', { id: fi.dbId, user_id: currentUser, key: fi.key, name: fi.name, size: fi.size, url: fi.url, folder: f });
+        });
+      }
+      renderFileList();
       document.getElementById('move-modal').classList.remove('visible');
       showToast(f + ' 폴더로 이동했습니다', 'success');
     };
@@ -765,7 +830,7 @@ function addFolder() {
   if (!name) return;
   if (folders.includes(name)) { showToast('이미 있는 폴더입니다', 'error'); return; }
   folders.push(name);
-  save(); renderFolders();
+  saveFolders(); renderFolders();
   closeFolderModal();
   showToast(name + ' 폴더 생성', 'success');
 }
