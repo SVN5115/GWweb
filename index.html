@@ -705,6 +705,35 @@ function renderFileList() {
 }
 
 // 업로드
+function optimizeImage(file, cb) {
+  var imgExts = ['jpg','jpeg','png','gif','webp','bmp'];
+  var ext = (file.name.split('.').pop()||'').toLowerCase();
+  if (!imgExts.includes(ext)) { cb(file); return; } // 이미지 아닌 경우 그대로
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    var img = new Image();
+    img.onload = function() {
+      var MAX = 1920; // 최대 해상도
+      var w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      var canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      var quality = 0.82;
+      canvas.toBlob(function(blob) {
+        if (!blob || blob.size >= file.size) { cb(file); return; } // 원본이 더 작으면 그대로
+        var optimized = new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
+        cb(optimized);
+      }, 'image/jpeg', quality);
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function uploadFiles(files) {
   if (!files.length) return;
   var total = files.length;
@@ -718,43 +747,49 @@ function uploadFiles(files) {
     if (file.size > 50 * 1024 * 1024) {
       showToast(file.name + ' - 50MB 초과', 'error'); done++; return;
     }
-    var ext = file.name.split('.').pop() || 'bin';
-    var key = Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
-    pl.textContent = file.name + ' 업로드 중...';
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + key, true);
-    xhr.setRequestHeader('apikey', SUPABASE_KEY);
-    xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
-    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-    xhr.setRequestHeader('x-upsert', 'true');
-    xhr.upload.onprogress = function(e) {
-      if (e.lengthComputable) pb.style.width = Math.round(e.loaded/e.total*100) + '%';
-    };
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState !== 4) return;
-      done++;
-      pb.style.width = Math.round(done/total*100) + '%';
-      if (xhr.status >= 200 && xhr.status < 300) {
-        var url = SUPABASE_URL + '/storage/v1/object/public/' + BUCKET + '/' + key;
-        var now = new Date();
-        var dateStr = now.getFullYear() + '-' + ('0'+(now.getMonth()+1)).slice(-2) + '-' + ('0'+now.getDate()).slice(-2);
-        var folder = currentFolder === '전체' ? '기타' : currentFolder;
-        var dbId = Date.now().toString(36) + Math.random().toString(36).slice(2);
-        var fileRow = { id: dbId, user_id: currentUser, key: key, name: file.name, size: file.size, url: url, folder: folder };
-        sbUpsert('user_files', fileRow);
-        fileList.unshift({ key: key, name: file.name, size: file.size, url: url, date: dateStr, folder: folder, dbId: dbId });
-        showToast(file.name + ' 업로드 완료!', 'success');
-      } else {
-        showToast(file.name + ' 업로드 실패 (' + xhr.status + ': ' + xhr.responseText.slice(0,80) + ')', 'error');
-        console.error('Upload error', xhr.status, xhr.responseText);
-      }
-      if (done === total) {
-        setTimeout(function(){ pw.classList.remove('visible'); pb.style.width = '0%'; }, 800);
-        renderFileList();
-        updateStorageInfo();
-      }
-    };
-    xhr.send(file);
+    pl.textContent = file.name + ' 최적화 중...';
+    optimizeImage(file, function(uploadFile) {
+      var ext = uploadFile.name.split('.').pop() || 'bin';
+      var key = Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
+      pl.textContent = file.name + ' 업로드 중...';
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + key, true);
+      xhr.setRequestHeader('apikey', SUPABASE_KEY);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+      xhr.setRequestHeader('Content-Type', uploadFile.type || 'application/octet-stream');
+      xhr.setRequestHeader('x-upsert', 'true');
+      xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) pb.style.width = Math.round(e.loaded/e.total*100) + '%';
+      };
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        done++;
+        pb.style.width = Math.round(done/total*100) + '%';
+        if (xhr.status >= 200 && xhr.status < 300) {
+          var url = SUPABASE_URL + '/storage/v1/object/public/' + BUCKET + '/' + key;
+          var now = new Date();
+          var dateStr = now.getFullYear() + '-' + ('0'+(now.getMonth()+1)).slice(-2) + '-' + ('0'+now.getDate()).slice(-2);
+          var folder = currentFolder === '전체' ? '기타' : currentFolder;
+          var dbId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+          var fileRow = { id: dbId, user_id: currentUser, key: key, name: file.name, size: uploadFile.size, url: url, folder: folder };
+          sbUpsert('user_files', fileRow);
+          fileList.unshift({ key: key, name: file.name, size: uploadFile.size, url: url, date: dateStr, folder: folder, dbId: dbId });
+          var saved = file.size - uploadFile.size;
+          var msg = file.name + ' 업로드 완료!';
+          if (saved > 1024) msg += ' (' + fmtSize(saved) + ' 절약)';
+          showToast(msg, 'success');
+        } else {
+          showToast(file.name + ' 업로드 실패 (' + xhr.status + ': ' + xhr.responseText.slice(0,80) + ')', 'error');
+          console.error('Upload error', xhr.status, xhr.responseText);
+        }
+        if (done === total) {
+          setTimeout(function(){ pw.classList.remove('visible'); pb.style.width = '0%'; }, 800);
+          renderFileList();
+          updateStorageInfo();
+        }
+      };
+      xhr.send(uploadFile);
+    });
   });
 }
 
