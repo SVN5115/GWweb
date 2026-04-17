@@ -468,10 +468,11 @@ function uploadFiles(files) {
     if (file.size > 50 * 1024 * 1024) {
       showToast(file.name + ' - 50MB 초과', 'error'); done++; return;
     }
-    var key = Date.now() + '_' + Math.random().toString(36).slice(2) + '_' + file.name;
+    var safeName = file.name.replace(/[^a-zA-Z0-9ㄱ-ㅎ가-힣._-]/g, '_');
+    var key = Date.now() + '_' + Math.random().toString(36).slice(2) + '_' + safeName;
     pl.textContent = file.name + ' 업로드 중...';
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + encodeURIComponent(key), true);
+    xhr.open('POST', SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + key, true);
     xhr.setRequestHeader('apikey', SUPABASE_KEY);
     xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
@@ -484,14 +485,15 @@ function uploadFiles(files) {
       done++;
       pb.style.width = Math.round(done/total*100) + '%';
       if (xhr.status >= 200 && xhr.status < 300) {
-        var url = SUPABASE_URL + '/storage/v1/object/public/' + BUCKET + '/' + encodeURIComponent(key);
+        var url = SUPABASE_URL + '/storage/v1/object/public/' + BUCKET + '/' + key;
         var now = new Date();
         var dateStr = now.getFullYear() + '-' + ('0'+(now.getMonth()+1)).slice(-2) + '-' + ('0'+now.getDate()).slice(-2);
         fileList.unshift({ key: key, name: file.name, size: file.size, url: url, date: dateStr, folder: currentFolder === '전체' ? '기타' : currentFolder });
         save();
         showToast(file.name + ' 업로드 완료!', 'success');
       } else {
-        showToast(file.name + ' 업로드 실패', 'error');
+        showToast(file.name + ' 업로드 실패 (' + xhr.status + ': ' + xhr.responseText.slice(0,80) + ')', 'error');
+        console.error('Upload error', xhr.status, xhr.responseText);
       }
       if (done === total) {
         setTimeout(function(){ pw.classList.remove('visible'); pb.style.width = '0%'; }, 800);
@@ -589,30 +591,7 @@ document.getElementById('file-input').addEventListener('change', function(){ upl
 // 폴더 모달 엔터
 document.getElementById('folder-name-input').addEventListener('keydown', function(e){ if(e.key==='Enter') addFolder(); });
 
-// Supabase Storage 버킷 생성 확인 (public bucket 'files')
-function initBucket() {
-  // 버킷 존재 확인
-  var xhr = new XMLHttpRequest();
-  xhr.open('GET', SUPABASE_URL + '/storage/v1/bucket/' + BUCKET, true);
-  xhr.setRequestHeader('apikey', SUPABASE_KEY);
-  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
-  xhr.onreadystatechange = function() {
-    if (xhr.readyState !== 4) return;
-    if (xhr.status === 404) {
-      // 버킷 생성
-      var xhr2 = new XMLHttpRequest();
-      xhr2.open('POST', SUPABASE_URL + '/storage/v1/bucket', true);
-      xhr2.setRequestHeader('apikey', SUPABASE_KEY);
-      xhr2.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
-      xhr2.setRequestHeader('Content-Type', 'application/json');
-      xhr2.send(JSON.stringify({ id: BUCKET, name: BUCKET, public: true }));
-    }
-  };
-  xhr.send();
-}
-
 // 초기화
-initBucket();
 renderFolders();
 renderFileList();
 updateStorageInfo();
