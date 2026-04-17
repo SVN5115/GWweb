@@ -1048,9 +1048,17 @@ function uploadFiles(files) {
 
 // 다운로드
 function downloadFile(url, name) {
-  var a = document.createElement('a');
-  a.href = url; a.download = name; a.target = '_blank';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  fetch(url)
+    .then(function(res){ return res.blob(); })
+    .then(function(blob){
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+    })
+    .catch(function(){ window.open(url, '_blank'); });
 }
 
 // 삭제
