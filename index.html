@@ -277,8 +277,66 @@
 </head>
 <body>
 
+<!-- 관리자 화면 -->
+<div id="admin-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:99999;flex-direction:column;">
+  <!-- 관리자 로그인 -->
+  <div id="admin-login-wrap" style="display:flex;align-items:center;justify-content:center;height:100%;">
+    <div style="background:var(--surface);border:1px solid #ff6b6b;border-radius:16px;padding:36px 32px;width:360px;max-width:92vw;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="font-size:36px;margin-bottom:8px;">🔐</div>
+        <div style="font-size:18px;font-weight:700;color:#ff6b6b;">관리자 접속</div>
+      </div>
+      <input id="admin-pw-input" type="password" placeholder="관리자 비밀번호"
+        style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;margin-bottom:12px;">
+      <div id="admin-login-error" style="color:#ff6b6b;font-size:12px;margin-bottom:10px;min-height:16px;"></div>
+      <button onclick="checkAdminPw()"
+        style="width:100%;padding:12px;background:#ff6b6b;color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:10px;">
+        접속
+      </button>
+      <button onclick="closeAdmin()"
+        style="width:100%;padding:10px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;">
+        취소
+      </button>
+    </div>
+  </div>
+  <!-- 관리자 패널 -->
+  <div id="admin-panel-wrap" style="display:none;flex-direction:column;height:100%;">
+    <div style="background:var(--surface);border-bottom:1px solid #ff6b6b;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div style="font-size:16px;font-weight:700;color:#ff6b6b;">🔐 관리자 패널</div>
+      <button onclick="closeAdmin()" style="background:none;border:1px solid var(--border);color:var(--text2);padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer;font-family:inherit;">나가기</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:24px;max-width:900px;margin:0 auto;width:100%;">
+      <!-- 통계 -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;">
+          <div style="font-size:24px;font-weight:700;color:var(--accent);" id="admin-stat-users">-</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;">전체 계정</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;">
+          <div style="font-size:24px;font-weight:700;color:var(--accent2);" id="admin-stat-files">-</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;">전체 파일</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;">
+          <div style="font-size:24px;font-weight:700;color:#f59e0b;" id="admin-stat-size">-</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;">총 용량</div>
+        </div>
+      </div>
+      <!-- 계정 목록 -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+        <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+          <div style="font-size:14px;font-weight:600;">계정 목록</div>
+          <button onclick="loadAdminData()" style="background:none;border:1px solid var(--border);color:var(--text2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit;">새로고침</button>
+        </div>
+        <div id="admin-user-list" style="padding:8px 0;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 로그인 화면 -->
 <div id="login-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;">
+  <!-- 숨김 관리자 트리거 -->
+  <div id="login-logo-trigger" style="position:absolute;top:0;left:0;width:60px;height:40px;cursor:default;"></div>
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:360px;max-width:92vw;">
     <div style="text-align:center;margin-bottom:28px;">
       <div style="font-size:36px;margin-bottom:8px;">📦</div>
@@ -338,7 +396,7 @@
 </div>
 
 <div id="app-wrap" style="display:none;"><div class="header">
-  <div class="header-logo">📦 파일 보관함</div>
+  <div class="header-logo" id="header-logo" style="cursor:default;user-select:none;">📦 파일 보관함</div>
   <div style="display:flex;align-items:center;gap:12px;">
   <div class="header-info" id="storage-info">로딩 중...</div>
   <span id="login-user-label" style="font-size:12px;color:var(--text2);"></span>
@@ -533,6 +591,121 @@ function doLogout() {
   sessionStorage.removeItem('file_user');
   showLogin();
 }
+
+// 관리자
+var _logoClickCount = 0;
+var _logoClickTimer = null;
+var _adminAuthed = false;
+
+// 로그인 화면 상단에 숨김 트리거 영역 (로고 대신)
+document.addEventListener('DOMContentLoaded', function() {
+  // 로그인 화면에서도 작동하도록 document 레벨로 처리
+  var logo = document.getElementById('header-logo');
+  var loginLogo = document.getElementById('login-logo-trigger');
+  function handleLogoClick() {
+    _logoClickCount++;
+    clearTimeout(_logoClickTimer);
+    if (_logoClickCount >= 4) {
+      _logoClickCount = 0;
+      openAdmin();
+    } else {
+      _logoClickTimer = setTimeout(function(){ _logoClickCount = 0; }, 4000);
+    }
+  }
+  if (logo) logo.addEventListener('click', handleLogoClick);
+  if (loginLogo) loginLogo.addEventListener('click', handleLogoClick);
+});
+
+function openAdmin() {
+  _adminAuthed = false;
+  document.getElementById('admin-screen').style.display = 'flex';
+  document.getElementById('admin-login-wrap').style.display = 'flex';
+  document.getElementById('admin-panel-wrap').style.display = 'none';
+  document.getElementById('admin-pw-input').value = '';
+  document.getElementById('admin-login-error').textContent = '';
+  setTimeout(function(){ document.getElementById('admin-pw-input').focus(); }, 100);
+}
+function closeAdmin() {
+  _adminAuthed = false;
+  document.getElementById('admin-screen').style.display = 'none';
+}
+function checkAdminPw() {
+  var pw = document.getElementById('admin-pw-input').value;
+  if (pw !== '00000000') {
+    document.getElementById('admin-login-error').textContent = '비밀번호가 틀렸습니다.';
+    return;
+  }
+  _adminAuthed = true;
+  document.getElementById('admin-login-wrap').style.display = 'none';
+  document.getElementById('admin-panel-wrap').style.display = 'flex';
+  loadAdminData();
+}
+function loadAdminData() {
+  // 전체 계정
+  sbQuery('accounts', '', function(e, accounts) {
+    document.getElementById('admin-stat-users').textContent = accounts ? accounts.length : 0;
+    // 전체 파일
+    sbQuery('user_files', '', function(e2, files) {
+      document.getElementById('admin-stat-files').textContent = files ? files.length : 0;
+      var totalSize = (files||[]).reduce(function(s,f){ return s+(f.size||0); }, 0);
+      document.getElementById('admin-stat-size').textContent = fmtSize(totalSize);
+      // 계정별 파일 수
+      var fileMap = {};
+      (files||[]).forEach(function(f){ fileMap[f.user_id] = (fileMap[f.user_id]||0)+1; });
+      var fileSizeMap = {};
+      (files||[]).forEach(function(f){ fileSizeMap[f.user_id] = (fileSizeMap[f.user_id]||0)+(f.size||0); });
+      // 계정 목록 렌더
+      var el = document.getElementById('admin-user-list');
+      el.innerHTML = '';
+      if (!accounts || !accounts.length) {
+        el.innerHTML = '<div style="padding:16px 18px;color:var(--text2);font-size:13px;">계정이 없습니다</div>';
+        return;
+      }
+      accounts.forEach(function(acc) {
+        var exp = new Date(acc.expires_at);
+        var isExpired = exp < new Date();
+        var daysLeft = Math.ceil((exp - new Date()) / (1000*60*60*24));
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;padding:12px 18px;border-bottom:1px solid var(--border);gap:12px;';
+        row.innerHTML =
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:13px;font-weight:500;">' + acc.id + '</div>' +
+            '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' +
+              '파일 ' + (fileMap[acc.id]||0) + '개 · ' + fmtSize(fileSizeMap[acc.id]||0) +
+              ' · 만료: ' + exp.toLocaleDateString('ko-KR') +
+              (isExpired ? ' <span style="color:#ff6b6b;">만료됨</span>' : ' <span style="color:var(--accent2);">(' + daysLeft + '일 남음)</span>') +
+            '</div>' +
+          '</div>' +
+          '<button onclick="adminDeleteUser(this.dataset.uid)" data-uid="' + acc.id + '" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">삭제</button>';
+        el.appendChild(row);
+      });
+    });
+  });
+}
+function adminDeleteUser(el) {
+  var userId = el.dataset.uid;
+  if (!confirm('[' + userId + '] 계정과 모든 파일을 삭제하시겠습니까?')) return;
+  // 해당 유저 파일 Storage에서 삭제
+  sbQuery('user_files', 'user_id=eq.' + encodeURIComponent(userId), function(e, files) {
+    if (files && files.length) {
+      var keys = files.map(function(f){ return f.key; });
+      var xhr = new XMLHttpRequest();
+      xhr.open('DELETE', SUPABASE_URL + '/storage/v1/object/' + BUCKET, true);
+      xhr.setRequestHeader('apikey', SUPABASE_KEY);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(JSON.stringify({ prefixes: keys }));
+    }
+    // DB에서 삭제 (CASCADE로 user_files, user_folders도 삭제됨)
+    sbDeleteRow('accounts', 'id=eq.' + encodeURIComponent(userId), function() {
+      showToast(userId + ' 계정 삭제 완료', 'success');
+      loadAdminData();
+    });
+  });
+}
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('admin-pw-input').addEventListener('keydown', function(e){ if(e.key==='Enter') checkAdminPw(); });
+});
 
 function doLogin() {
   var id = document.getElementById('login-id').value.trim();
