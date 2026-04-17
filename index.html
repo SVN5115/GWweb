@@ -468,8 +468,8 @@ function uploadFiles(files) {
     if (file.size > 50 * 1024 * 1024) {
       showToast(file.name + ' - 50MB 초과', 'error'); done++; return;
     }
-    var safeName = file.name.replace(/[^a-zA-Z0-9ㄱ-ㅎ가-힣._-]/g, '_');
-    var key = Date.now() + '_' + Math.random().toString(36).slice(2) + '_' + safeName;
+    var ext = file.name.split('.').pop() || 'bin';
+    var key = Date.now() + '_' + Math.random().toString(36).slice(2) + '.' + ext;
     pl.textContent = file.name + ' 업로드 중...';
     var xhr = new XMLHttpRequest();
     xhr.open('POST', SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + key, true);
