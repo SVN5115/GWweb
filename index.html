@@ -25,7 +25,7 @@
     color: var(--text);
     min-height: 100vh;
   }
- 
+
   /* 헤더 */
   .header {
     background: var(--surface);
@@ -50,10 +50,10 @@
     font-size: 12px;
     color: var(--text2);
   }
- 
+
   /* 메인 */
   .main { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
- 
+
   /* 업로드 존 */
   .upload-zone {
     border: 2px dashed var(--border);
@@ -89,7 +89,7 @@
     font-family: inherit;
     pointer-events: none;
   }
- 
+
   /* 진행 바 */
   .progress-wrap {
     background: var(--surface);
@@ -102,7 +102,7 @@
   .progress-label { font-size: 13px; color: var(--text2); margin-bottom: 8px; }
   .progress-bar-bg { background: var(--surface2); border-radius: 999px; height: 6px; }
   .progress-bar { background: var(--accent); height: 6px; border-radius: 999px; width: 0%; transition: width 0.3s; }
- 
+
   /* 폴더/필터 */
   .toolbar {
     display: flex;
@@ -164,7 +164,7 @@
   }
   .search-input:focus { border-color: var(--accent); }
   .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; color: var(--text2); pointer-events: none; }
- 
+
   /* 파일 목록 */
   .file-list { display: flex; flex-direction: column; gap: 8px; }
   .file-item {
@@ -203,14 +203,14 @@
   }
   .file-btn:hover { border-color: var(--accent); color: var(--text); }
   .file-btn.danger:hover { border-color: var(--danger); color: var(--danger); }
- 
+
   /* 빈 상태 */
   .empty-state {
     text-align: center; padding: 60px 20px;
     color: var(--text2); font-size: 14px;
   }
   .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; }
- 
+
   /* 모달 */
   .modal-overlay {
     display: none; position: fixed; inset: 0;
@@ -245,7 +245,7 @@
     border: 1px solid var(--border); border-radius: 8px; font-size: 13px;
     cursor: pointer; font-family: inherit;
   }
- 
+
   /* 이미지 미리보기 */
   .preview-overlay {
     display: none; position: fixed; inset: 0;
@@ -255,7 +255,7 @@
   }
   .preview-overlay.visible { display: flex; }
   .preview-overlay img { max-width: 92vw; max-height: 92vh; border-radius: 8px; }
- 
+
   /* 토스트 */
   .toast {
     position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
@@ -267,7 +267,7 @@
   .toast.show { transform: translateX(-50%) translateY(0); }
   .toast.success { border-color: var(--accent2); }
   .toast.error { border-color: var(--danger); }
- 
+
   /* 반응형 */
   @media (max-width: 600px) {
     .file-btn span { display: none; }
@@ -276,7 +276,7 @@
 </style>
 </head>
 <body>
- 
+
 <!-- 관리자 화면 -->
 <div id="admin-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:99999;flex-direction:column;">
   <!-- 관리자 로그인 -->
@@ -332,7 +332,7 @@
     </div>
   </div>
 </div>
- 
+
 <!-- 로그인 화면 -->
 <div id="login-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;">
   <!-- 숨김 관리자 트리거 -->
@@ -361,7 +361,7 @@
     </div>
   </div>
 </div>
- 
+
 <!-- 계정 생성 화면 -->
 <div id="signup-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:360px;max-width:92vw;">
@@ -394,7 +394,7 @@
     </div>
   </div>
 </div>
- 
+
 <div id="app-wrap" style="display:none;"><div class="header">
   <div class="header-logo" id="header-logo" style="cursor:default;user-select:none;">📦 파일 보관함</div>
   <div style="display:flex;align-items:center;gap:12px;">
@@ -403,9 +403,9 @@
   <button onclick="doLogout()" style="background:none;border:1px solid var(--border);color:var(--text2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit;">로그아웃</button>
 </div>
 </div>
- 
+
 <div class="main">
- 
+
   <!-- 업로드 존 -->
   <div class="upload-zone" id="upload-zone">
     <input type="file" id="file-input" multiple accept="*/*">
@@ -414,13 +414,13 @@
     <div class="upload-sub">이미지, 문서, 동영상 등 모든 파일 지원 · 최대 50MB</div>
     <button class="upload-btn">📁 파일 선택</button>
   </div>
- 
+
   <!-- 진행 바 -->
   <div class="progress-wrap" id="progress-wrap">
     <div class="progress-label" id="progress-label">업로드 중...</div>
     <div class="progress-bar-bg"><div class="progress-bar" id="progress-bar"></div></div>
   </div>
- 
+
   <!-- 툴바 -->
   <div class="toolbar">
     <div class="folder-tabs" id="folder-tabs"></div>
@@ -430,11 +430,11 @@
       <input class="search-input" type="text" id="search-input" placeholder="파일 검색..." oninput="renderFileList()">
     </div>
   </div>
- 
+
   <!-- 파일 목록 -->
   <div class="file-list" id="file-list"></div>
 </div>
- 
+
 <!-- 폴더 추가 모달 -->
 <div class="modal-overlay" id="folder-modal">
   <div class="modal">
@@ -446,7 +446,7 @@
     </div>
   </div>
 </div>
- 
+
 <!-- 파일 이동 모달 -->
 <div class="modal-overlay" id="move-modal">
   <div class="modal">
@@ -457,27 +457,27 @@
     </div>
   </div>
 </div>
- 
+
 <!-- 이미지 미리보기 -->
 <div class="preview-overlay" id="preview-overlay" onclick="this.classList.remove('visible')">
   <img id="preview-img" src="">
 </div>
- 
+
 <!-- 토스트 -->
 <div class="toast" id="toast"></div>
- 
+
 <script>
 const SUPABASE_URL = 'https://mtppgluzuaucohugcwjn.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10cHBnbHV6dWF1Y29odWdjd2puIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNTU4NzUsImV4cCI6MjA5MTkzMTg3NX0.113Uz5DvRKYcEZqRWuRn7dI_qOSJII-iDkjDzskgdzk';
 const BUCKET = 'files';
- 
+
 // 간단 해시
 function simpleHash(str) {
   var h = 0;
   for (var i = 0; i < str.length; i++) { h = (Math.imul(31, h) + str.charCodeAt(i)) | 0; }
   return h.toString(36);
 }
- 
+
 // Supabase REST
 function sbGet(table, id, cb) {
   var xhr = new XMLHttpRequest();
@@ -486,7 +486,14 @@ function sbGet(table, id, cb) {
   xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) return;
-    try { var r = JSON.parse(xhr.responseText); cb(null, r[0]||null); } catch(e) { cb(e); }
+    var text = xhr.responseText || '';
+    if (!text.trim()) { cb(null, null); return; }
+    try {
+      var r = JSON.parse(text);
+      if (Array.isArray(r)) { cb(null, r[0]||null); }
+      else if (r.message || r.error) { cb(new Error(r.message||r.error), null); }
+      else { cb(null, r); }
+    } catch(e) { cb(null, null); }
   };
   xhr.send();
 }
@@ -499,7 +506,8 @@ function sbInsert(table, data, cb) {
   xhr.setRequestHeader('Prefer', 'return=minimal');
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) return;
-    cb(xhr.status >= 200 && xhr.status < 300 ? null : new Error(xhr.responseText));
+    console.log('sbInsert status:', xhr.status, xhr.responseText);
+    cb(xhr.status >= 200 && xhr.status < 300 ? null : new Error(xhr.status + ' ' + xhr.responseText));
   };
   xhr.send(JSON.stringify(data));
 }
@@ -545,9 +553,9 @@ function sbDeleteExpired() {
   xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
   xhr.send();
 }
- 
+
 var currentUser = null;
- 
+
 function showLogin() {
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('signup-screen').style.display = 'none';
@@ -591,12 +599,12 @@ function doLogout() {
   sessionStorage.removeItem('file_user');
   showLogin();
 }
- 
+
 // 관리자
 var _logoClickCount = 0;
 var _logoClickTimer = null;
 var _adminAuthed = false;
- 
+
 // 로그인 화면 상단에 숨김 트리거 영역 (로고 대신)
 document.addEventListener('DOMContentLoaded', function() {
   // 로그인 화면에서도 작동하도록 document 레벨로 처리
@@ -615,7 +623,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (logo) logo.addEventListener('click', handleLogoClick);
   if (loginLogo) loginLogo.addEventListener('click', handleLogoClick);
 });
- 
+
 function openAdmin() {
   _adminAuthed = false;
   document.getElementById('admin-screen').style.display = 'flex';
@@ -641,20 +649,22 @@ function checkAdminPw() {
   loadAdminData();
 }
 function loadAdminData() {
-  // 전체 계정
   sbQuery('accounts', '', function(e, accounts) {
     document.getElementById('admin-stat-users').textContent = accounts ? accounts.length : 0;
-    // 전체 파일
-    sbQuery('user_files', '', function(e2, files) {
+    sbQuery('user_files', 'order=uploaded_at.desc', function(e2, files) {
       document.getElementById('admin-stat-files').textContent = files ? files.length : 0;
       var totalSize = (files||[]).reduce(function(s,f){ return s+(f.size||0); }, 0);
       document.getElementById('admin-stat-size').textContent = fmtSize(totalSize);
-      // 계정별 파일 수
-      var fileMap = {};
-      (files||[]).forEach(function(f){ fileMap[f.user_id] = (fileMap[f.user_id]||0)+1; });
+
+      // 계정별 파일 맵
+      var filesByUser = {};
       var fileSizeMap = {};
-      (files||[]).forEach(function(f){ fileSizeMap[f.user_id] = (fileSizeMap[f.user_id]||0)+(f.size||0); });
-      // 계정 목록 렌더
+      (files||[]).forEach(function(f){
+        if (!filesByUser[f.user_id]) filesByUser[f.user_id] = [];
+        filesByUser[f.user_id].push(f);
+        fileSizeMap[f.user_id] = (fileSizeMap[f.user_id]||0)+(f.size||0);
+      });
+
       var el = document.getElementById('admin-user-list');
       el.innerHTML = '';
       if (!accounts || !accounts.length) {
@@ -665,21 +675,77 @@ function loadAdminData() {
         var exp = new Date(acc.expires_at);
         var isExpired = exp < new Date();
         var daysLeft = Math.ceil((exp - new Date()) / (1000*60*60*24));
+        var userFiles = filesByUser[acc.id] || [];
+        var fileCount = userFiles.length;
+
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'border-bottom:1px solid var(--border);';
+
+        // 계정 행
         var row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;padding:12px 18px;border-bottom:1px solid var(--border);gap:12px;';
+        row.style.cssText = 'display:flex;align-items:center;padding:12px 18px;gap:12px;cursor:pointer;';
         row.innerHTML =
+          '<div style="font-size:13px;color:var(--text2);flex-shrink:0;">▶</div>' +
           '<div style="flex:1;min-width:0;">' +
             '<div style="font-size:13px;font-weight:500;">' + acc.id + '</div>' +
             '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' +
-              '파일 ' + (fileMap[acc.id]||0) + '개 · ' + fmtSize(fileSizeMap[acc.id]||0) +
+              '파일 ' + fileCount + '개 · ' + fmtSize(fileSizeMap[acc.id]||0) +
               ' · 만료: ' + exp.toLocaleDateString('ko-KR') +
               (isExpired ? ' <span style="color:#ff6b6b;">만료됨</span>' : ' <span style="color:var(--accent2);">(' + daysLeft + '일 남음)</span>') +
             '</div>' +
           '</div>' +
-          '<button onclick="adminDeleteUser(this)" data-uid="' + acc.id + '" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">삭제</button>';
-        el.appendChild(row);
+          '<button onclick="adminDeleteUser(this)" data-uid="' + acc.id + '" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">계정삭제</button>';
+
+        // 파일 목록 (접기/펼치기)
+        var fileList = document.createElement('div');
+        fileList.style.cssText = 'display:none;background:var(--bg);border-top:1px solid var(--border);padding:8px 0;';
+
+        if (userFiles.length) {
+          userFiles.forEach(function(f) {
+            var fRow = document.createElement('div');
+            fRow.style.cssText = 'display:flex;align-items:center;padding:8px 18px 8px 42px;gap:10px;';
+            fRow.innerHTML =
+              '<div style="font-size:18px;flex-shrink:0;">' + (fileIcon(f.name, true)||'📁') + '</div>' +
+              '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + f.name + '</div>' +
+                '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' + fmtSize(f.size) + ' · ' + (f.uploaded_at||'').slice(0,10) + ' · 📂 ' + (f.folder||'기타') + '</div>' +
+              '</div>' +
+              '<button onclick="adminDeleteFile(this)" data-fid="' + f.id + '" data-fkey="' + f.key + '" style="background:none;border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">삭제</button>';
+            fileList.appendChild(fRow);
+          });
+        } else {
+          fileList.innerHTML = '<div style="padding:10px 42px;font-size:12px;color:var(--text2);">파일이 없습니다</div>';
+        }
+
+        // 클릭 시 토글
+        row.addEventListener('click', function(e) {
+          if (e.target.tagName === 'BUTTON') return;
+          var arr = row.querySelector('div');
+          var open = fileList.style.display !== 'none';
+          fileList.style.display = open ? 'none' : 'block';
+          arr.textContent = open ? '▶' : '▼';
+        });
+
+        wrap.appendChild(row);
+        wrap.appendChild(fileList);
+        el.appendChild(wrap);
       });
     });
+  });
+}
+function adminDeleteFile(el) {
+  var fid = el.dataset.fid;
+  var fkey = el.dataset.fkey;
+  if (!confirm('이 파일을 삭제하시겠습니까?')) return;
+  var xhr = new XMLHttpRequest();
+  xhr.open('DELETE', SUPABASE_URL + '/storage/v1/object/' + BUCKET, true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.send(JSON.stringify({ prefixes: [fkey] }));
+  sbDeleteRow('user_files', 'id=eq.' + fid, function() {
+    showToast('파일 삭제 완료', 'success');
+    loadAdminData();
   });
 }
 function adminDeleteUser(el) {
@@ -706,7 +772,7 @@ function adminDeleteUser(el) {
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('admin-pw-input').addEventListener('keydown', function(e){ if(e.key==='Enter') checkAdminPw(); });
 });
- 
+
 function doLogin() {
   var id = document.getElementById('login-id').value.trim();
   var pw = document.getElementById('login-pw').value;
@@ -718,6 +784,12 @@ function doLogin() {
   err.textContent = '';
   sbDeleteExpired();
   sbGet('accounts', id, function(e, acc) {
+    if (e) {
+      btn.textContent = '로그인'; btn.disabled = false;
+      err.textContent = '서버 오류: ' + e.message;
+      console.error('sbGet error:', e);
+      return;
+    }
     if (acc) {
       // 기존 계정 - 비밀번호 확인
       btn.textContent = '로그인'; btn.disabled = false;
@@ -728,7 +800,7 @@ function doLogin() {
       var expires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
       sbInsert('accounts', { id: id, pw_hash: simpleHash(pw), expires_at: expires }, function(e2) {
         btn.textContent = '로그인'; btn.disabled = false;
-        if (e2) { err.textContent = '오류가 발생했습니다. 다시 시도해주세요.'; return; }
+        if (e2) { err.textContent = '계정 생성 실패: ' + e2.message; console.error('sbInsert error:', e2); return; }
         enterApp(id);
       });
     }
@@ -751,13 +823,13 @@ function doSignup() {
     });
   });
 }
- 
+
 // 엔터키
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('login-pw').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
   document.getElementById('login-id').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('login-pw').focus(); });
   document.getElementById('signup-pw2').addEventListener('keydown', function(e){ if(e.key==='Enter') doSignup(); });
- 
+
   // 세션 복원
   var saved = sessionStorage.getItem('file_user');
   if (saved) {
@@ -769,12 +841,12 @@ document.addEventListener('DOMContentLoaded', function() {
     showLogin();
   }
 });
- 
+
 var folders = ['기타'];
 var fileList = [];
 var currentFolder = '전체';
 var moveTargetKey = null;
- 
+
 // 토스트
 function showToast(msg, type) {
   var t = document.getElementById('toast');
@@ -783,18 +855,18 @@ function showToast(msg, type) {
   t.classList.add('show');
   setTimeout(function(){ t.classList.remove('show'); }, 2500);
 }
- 
+
 // 파일 크기 포맷
 function fmtSize(bytes) {
   if (bytes < 1024) return bytes + 'B';
   if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + 'KB';
   return (bytes/(1024*1024)).toFixed(1) + 'MB';
 }
- 
+
 // 파일 아이콘
-function fileIcon(name) {
+function fileIcon(name, forAdmin) {
   var ext = (name.split('.').pop()||'').toLowerCase();
-  if (['jpg','jpeg','png','gif','webp','svg'].includes(ext)) return null; // 썸네일
+  if (['jpg','jpeg','png','gif','webp','svg'].includes(ext)) return forAdmin ? '🖼' : null;
   if (['mp4','mov','avi','mkv'].includes(ext)) return '🎬';
   if (['mp3','wav','aac'].includes(ext)) return '🎵';
   if (['pdf'].includes(ext)) return '📄';
@@ -804,12 +876,12 @@ function fileIcon(name) {
   if (['zip','rar','7z'].includes(ext)) return '🗜️';
   return '📁';
 }
- 
+
 function isImage(name) {
   var ext = (name.split('.').pop()||'').toLowerCase();
   return ['jpg','jpeg','png','gif','webp'].includes(ext);
 }
- 
+
 // 폴더 저장
 function saveFolders() {
   if (!currentUser) return;
@@ -817,7 +889,7 @@ function saveFolders() {
 }
 // 하위 호환용
 function save() { saveFolders(); }
- 
+
 // 폴더 탭 렌더
 function renderFolders() {
   var el = document.getElementById('folder-tabs');
@@ -830,7 +902,7 @@ function renderFolders() {
     el.appendChild(btn);
   });
 }
- 
+
 // 파일 목록 렌더
 function renderFileList() {
   var el = document.getElementById('file-list');
@@ -840,17 +912,17 @@ function renderFileList() {
     var inSearch = !q || f.name.toLowerCase().includes(q);
     return inFolder && inSearch;
   });
- 
+
   if (!list.length) {
     el.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>파일이 없습니다</div>';
     return;
   }
- 
+
   el.innerHTML = '';
   list.forEach(function(f) {
     var item = document.createElement('div');
     item.className = 'file-item';
- 
+
     var icon = fileIcon(f.name);
     var imgHtml = '';
     if (!icon) {
@@ -858,7 +930,7 @@ function renderFileList() {
     } else {
       imgHtml = '<div class="file-icon">' + icon + '</div>';
     }
- 
+
     item.innerHTML = imgHtml +
       '<div class="file-info">' +
         '<div class="file-name" title="' + f.name + '">' + f.name + '</div>' +
@@ -876,7 +948,7 @@ function renderFileList() {
     el.appendChild(item);
   });
 }
- 
+
 // 업로드
 function optimizeImage(file, cb) {
   var imgExts = ['jpg','jpeg','png','gif','webp','bmp'];
@@ -906,7 +978,7 @@ function optimizeImage(file, cb) {
   };
   reader.readAsDataURL(file);
 }
- 
+
 function uploadFiles(files) {
   if (!files.length) return;
   var total = files.length;
@@ -915,7 +987,7 @@ function uploadFiles(files) {
   var pb = document.getElementById('progress-bar');
   var pl = document.getElementById('progress-label');
   pw.classList.add('visible');
- 
+
   Array.from(files).forEach(function(file) {
     if (file.size > 50 * 1024 * 1024) {
       showToast(file.name + ' - 50MB 초과', 'error'); done++; return;
@@ -965,14 +1037,14 @@ function uploadFiles(files) {
     });
   });
 }
- 
+
 // 다운로드
 function downloadFile(url, name) {
   var a = document.createElement('a');
   a.href = url; a.download = name; a.target = '_blank';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
- 
+
 // 삭제
 function deleteFile(key) {
   if (!confirm('삭제하시겠습니까?')) return;
@@ -990,7 +1062,7 @@ function deleteFile(key) {
   renderFileList(); updateStorageInfo();
   showToast('삭제되었습니다');
 }
- 
+
 // 이동
 function moveFile(key) {
   moveTargetKey = key;
@@ -1017,13 +1089,13 @@ function moveFile(key) {
   });
   document.getElementById('move-modal').classList.add('visible');
 }
- 
+
 // 이미지 미리보기
 function previewImg(url) {
   document.getElementById('preview-img').src = url;
   document.getElementById('preview-overlay').classList.add('visible');
 }
- 
+
 // 폴더 추가
 function openAddFolder() {
   document.getElementById('folder-name-input').value = '';
@@ -1042,24 +1114,24 @@ function addFolder() {
   closeFolderModal();
   showToast(name + ' 폴더 생성', 'success');
 }
- 
+
 // 스토리지 정보
 function updateStorageInfo() {
   var total = fileList.reduce(function(s,f){ return s+f.size; }, 0);
   document.getElementById('storage-info').textContent = fileList.length + '개 파일 · ' + fmtSize(total);
 }
- 
+
 // 드래그앤드롭
 var zone = document.getElementById('upload-zone');
 zone.addEventListener('dragover', function(e){ e.preventDefault(); zone.classList.add('drag-over'); });
 zone.addEventListener('dragleave', function(){ zone.classList.remove('drag-over'); });
 zone.addEventListener('drop', function(e){ e.preventDefault(); zone.classList.remove('drag-over'); uploadFiles(e.dataTransfer.files); });
 document.getElementById('file-input').addEventListener('change', function(){ uploadFiles(this.files); this.value=''; });
- 
+
 // 폴더 모달 엔터
 document.getElementById('folder-name-input').addEventListener('keydown', function(e){ if(e.key==='Enter') addFolder(); });
- 
- 
+
+
 </script>
 </div></body>
 </html>
