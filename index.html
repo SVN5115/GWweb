@@ -710,6 +710,7 @@ function loadAdminData() {
                 '<div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + f.name + '</div>' +
                 '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' + fmtSize(f.size) + ' · ' + (f.uploaded_at||'').slice(0,10) + ' · 📂 ' + (f.folder||'기타') + '</div>' +
               '</div>' +
+              '<button onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\')" style="background:none;border:1px solid var(--border);color:var(--accent2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">다운</button>' +
               '<button onclick="adminDeleteFile(this)" data-fid="' + f.id + '" data-fkey="' + f.key + '" style="background:none;border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">삭제</button>';
             fileList.appendChild(fRow);
           });
