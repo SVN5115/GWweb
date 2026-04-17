@@ -277,9 +277,73 @@
 </head>
 <body>
 
-<div class="header">
+<!-- 로그인 화면 -->
+<div id="login-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:360px;max-width:92vw;">
+    <div style="text-align:center;margin-bottom:28px;">
+      <div style="font-size:36px;margin-bottom:8px;">📦</div>
+      <div style="font-size:20px;font-weight:700;color:var(--accent);">파일 보관함</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px;">아이디와 비밀번호를 입력하세요</div>
+    </div>
+    <div style="margin-bottom:12px;">
+      <input id="login-id" type="text" placeholder="아이디" autocomplete="off"
+        style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:16px;">
+      <input id="login-pw" type="password" placeholder="비밀번호"
+        style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+    </div>
+    <div id="login-error" style="color:#ff6b6b;font-size:12px;margin-bottom:10px;min-height:16px;"></div>
+    <button id="login-btn" onclick="doLogin()"
+      style="width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;">
+      로그인
+    </button>
+    <div style="text-align:center;margin-top:16px;">
+      <div style="font-size:12px;color:var(--text2);">처음 입력한 아이디/비밀번호로 자동 계정 생성<br>계정은 5일 후 자동 삭제됩니다</div>
+    </div>
+  </div>
+</div>
+
+<!-- 계정 생성 화면 -->
+<div id="signup-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:360px;max-width:92vw;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <div style="font-size:20px;font-weight:700;color:var(--accent);">계정 생성</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px;">계정은 5일 후 자동 삭제됩니다</div>
+    </div>
+    <div style="margin-bottom:12px;">
+      <input id="signup-id" type="text" placeholder="아이디 (4자 이상)" autocomplete="off"
+        style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:12px;">
+      <input id="signup-pw" type="password" placeholder="비밀번호 (4자 이상)"
+        style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:16px;">
+      <input id="signup-pw2" type="password" placeholder="비밀번호 확인"
+        style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
+    </div>
+    <div id="signup-error" style="color:#ff6b6b;font-size:12px;margin-bottom:10px;min-height:16px;"></div>
+    <button onclick="doSignup()"
+      style="width:100%;padding:12px;background:var(--accent2);color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;">
+      계정 만들기
+    </button>
+    <div style="text-align:center;margin-top:16px;">
+      <button onclick="showLogin()"
+        style="background:none;border:none;color:var(--text2);font-size:13px;cursor:pointer;font-family:inherit;">
+        ← 로그인으로 돌아가기
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="app-wrap" style="display:none;"><div class="header">
   <div class="header-logo">📦 파일 보관함</div>
+  <div style="display:flex;align-items:center;gap:12px;">
   <div class="header-info" id="storage-info">로딩 중...</div>
+  <span id="login-user-label" style="font-size:12px;color:var(--text2);"></span>
+  <button onclick="doLogout()" style="background:none;border:1px solid var(--border);color:var(--text2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit;">로그아웃</button>
+</div>
 </div>
 
 <div class="main">
@@ -348,6 +412,137 @@
 const SUPABASE_URL = 'https://mtppgluzuaucohugcwjn.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im10cHBnbHV6dWF1Y29odWdjd2puIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzNTU4NzUsImV4cCI6MjA5MTkzMTg3NX0.113Uz5DvRKYcEZqRWuRn7dI_qOSJII-iDkjDzskgdzk';
 const BUCKET = 'files';
+
+// 간단 해시
+function simpleHash(str) {
+  var h = 0;
+  for (var i = 0; i < str.length; i++) { h = (Math.imul(31, h) + str.charCodeAt(i)) | 0; }
+  return h.toString(36);
+}
+
+// Supabase REST
+function sbGet(table, id, cb) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id) + '&select=*', true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    try { var r = JSON.parse(xhr.responseText); cb(null, r[0]||null); } catch(e) { cb(e); }
+  };
+  xhr.send();
+}
+function sbInsert(table, data, cb) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', SUPABASE_URL + '/rest/v1/' + table, true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('Prefer', 'return=minimal');
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    cb(xhr.status >= 200 && xhr.status < 300 ? null : new Error(xhr.responseText));
+  };
+  xhr.send(JSON.stringify(data));
+}
+function sbDeleteExpired() {
+  var xhr = new XMLHttpRequest();
+  xhr.open('DELETE', SUPABASE_URL + '/rest/v1/accounts?expires_at=lt.' + new Date().toISOString(), true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.send();
+}
+
+var currentUser = null;
+
+function showLogin() {
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('signup-screen').style.display = 'none';
+  document.getElementById('app-wrap').style.display = 'none';
+  document.getElementById('login-error').textContent = '';
+}
+function showSignup() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('signup-screen').style.display = 'flex';
+  document.getElementById('signup-error').textContent = '';
+}
+function enterApp(userId) {
+  currentUser = userId;
+  sessionStorage.setItem('file_user', userId);
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('signup-screen').style.display = 'none';
+  document.getElementById('app-wrap').style.display = 'block';
+  document.getElementById('login-user-label').textContent = '👤 ' + userId;
+  renderFolders(); renderFileList(); updateStorageInfo();
+}
+function doLogout() {
+  currentUser = null;
+  sessionStorage.removeItem('file_user');
+  showLogin();
+}
+
+function doLogin() {
+  var id = document.getElementById('login-id').value.trim();
+  var pw = document.getElementById('login-pw').value;
+  var err = document.getElementById('login-error');
+  if (!id || id.length < 2) { err.textContent = '아이디는 2자 이상이어야 합니다.'; return; }
+  if (!pw || pw.length < 4) { err.textContent = '비밀번호는 4자 이상이어야 합니다.'; return; }
+  var btn = document.getElementById('login-btn');
+  btn.textContent = '확인 중...'; btn.disabled = true;
+  err.textContent = '';
+  sbDeleteExpired();
+  sbGet('accounts', id, function(e, acc) {
+    if (acc) {
+      // 기존 계정 - 비밀번호 확인
+      btn.textContent = '로그인'; btn.disabled = false;
+      if (acc.pw_hash !== simpleHash(pw)) { err.textContent = '비밀번호가 틀렸습니다.'; return; }
+      enterApp(id);
+    } else {
+      // 신규 계정 자동 생성
+      var expires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
+      sbInsert('accounts', { id: id, pw_hash: simpleHash(pw), expires_at: expires }, function(e2) {
+        btn.textContent = '로그인'; btn.disabled = false;
+        if (e2) { err.textContent = '오류가 발생했습니다. 다시 시도해주세요.'; return; }
+        enterApp(id);
+      });
+    }
+  });
+}
+function doSignup() {
+  var id = document.getElementById('signup-id').value.trim();
+  var pw = document.getElementById('signup-pw').value;
+  var pw2 = document.getElementById('signup-pw2').value;
+  var err = document.getElementById('signup-error');
+  if (!id || id.length < 4) { err.textContent = '아이디는 4자 이상이어야 합니다.'; return; }
+  if (!pw || pw.length < 4) { err.textContent = '비밀번호는 4자 이상이어야 합니다.'; return; }
+  if (pw !== pw2) { err.textContent = '비밀번호가 일치하지 않습니다.'; return; }
+  sbGet('accounts', id, function(e, acc) {
+    if (acc) { err.textContent = '이미 존재하는 아이디입니다.'; return; }
+    var expires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
+    sbInsert('accounts', { id: id, pw_hash: simpleHash(pw), expires_at: expires }, function(e2) {
+      if (e2) { err.textContent = '계정 생성 실패: ' + e2.message; return; }
+      enterApp(id);
+    });
+  });
+}
+
+// 엔터키
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('login-pw').addEventListener('keydown', function(e){ if(e.key==='Enter') doLogin(); });
+  document.getElementById('login-id').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('login-pw').focus(); });
+  document.getElementById('signup-pw2').addEventListener('keydown', function(e){ if(e.key==='Enter') doSignup(); });
+
+  // 세션 복원
+  var saved = sessionStorage.getItem('file_user');
+  if (saved) {
+    sbGet('accounts', saved, function(e, acc) {
+      if (acc && new Date(acc.expires_at) > new Date()) { enterApp(saved); }
+      else { sessionStorage.removeItem('file_user'); showLogin(); }
+    });
+  } else {
+    showLogin();
+  }
+});
 
 var folders = JSON.parse(localStorage.getItem('file_folders') || '["전체","기타"]');
 var fileList = JSON.parse(localStorage.getItem('file_list') || '[]');
@@ -591,10 +786,7 @@ document.getElementById('file-input').addEventListener('change', function(){ upl
 // 폴더 모달 엔터
 document.getElementById('folder-name-input').addEventListener('keydown', function(e){ if(e.key==='Enter') addFolder(); });
 
-// 초기화
-renderFolders();
-renderFileList();
-updateStorageInfo();
+
 </script>
-</body>
+</div></body>
 </html>
