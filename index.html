@@ -359,6 +359,20 @@
   </div>
 </div>
 
+<!-- 유저 비밀번호 변경 모달 -->
+<div id="user-changepw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999999;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--accent);border-radius:16px;padding:28px 28px;width:340px;max-width:92vw;">
+    <div id="user-changepw-title" style="font-size:15px;font-weight:700;margin-bottom:16px;color:var(--accent);">🔑 비밀번호 변경</div>
+    <input id="user-changepw-input" type="password" placeholder="새 비밀번호 (4자 이상)"
+      style="width:100%;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box;">
+    <div id="user-changepw-error" style="color:#ff6b6b;font-size:12px;margin-bottom:12px;min-height:16px;"></div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="submitUserChangePw()" style="flex:1;padding:10px;background:var(--accent);color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">변경</button>
+      <button onclick="document.getElementById('user-changepw-modal').style.display='none'" style="flex:1;padding:10px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit;">취소</button>
+    </div>
+  </div>
+</div>
+
 <!-- 로그인 화면 -->
 <div id="login-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;">
   <!-- 숨김 관리자 트리거 -->
@@ -1025,26 +1039,40 @@ function togglePw(userId) {
     });
   });
 }
+var _changePwTargetId = null;
 function adminChangePw(el) {
-  var userId = el.dataset.uid;
-  var newPw = prompt('[' + userId + '] 새 비밀번호를 입력하세요 (4자 이상):');
-  if (!newPw) return;
-  if (newPw.length < 4) { alert('비밀번호는 4자 이상이어야 합니다.'); return; }
-  var xhr = new XMLHttpRequest();
-  xhr.open('PATCH', SUPABASE_URL + '/rest/v1/accounts?id=eq.' + encodeURIComponent(userId), true);
-  xhr.setRequestHeader('apikey', SUPABASE_KEY);
-  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
-  xhr.setRequestHeader('Content-Type', 'application/json');
-  xhr.setRequestHeader('Prefer', 'return=minimal');
-  xhr.onreadystatechange = function() {
-    if (xhr.readyState !== 4) return;
-    if (xhr.status >= 200 && xhr.status < 300) {
-      showToast('[' + userId + '] 비밀번호 변경 완료', 'success');
-    } else {
-      showToast('변경 실패: ' + xhr.responseText, 'error');
-    }
-  };
-  sha256(newPw).then(function(h){ xhr.send(JSON.stringify({ pw_hash: h, pw_plain: newPw })); });
+  _changePwTargetId = el.dataset.uid;
+  document.getElementById('user-changepw-title').textContent = '🔑 [' + _changePwTargetId + '] 비밀번호 변경';
+  document.getElementById('user-changepw-input').value = '';
+  document.getElementById('user-changepw-error').textContent = '';
+  document.getElementById('user-changepw-modal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('user-changepw-input').focus(); }, 100);
+}
+function submitUserChangePw() {
+  var newPw = document.getElementById('user-changepw-input').value;
+  var err = document.getElementById('user-changepw-error');
+  if (!newPw || newPw.length < 4) { err.textContent = '비밀번호는 4자 이상이어야 합니다.'; return; }
+  var userId = _changePwTargetId;
+  sha256(newPw).then(function(h) {
+    encryptPwForStorage(newPw, function(encPw) {
+      var xhr = new XMLHttpRequest();
+      xhr.open('PATCH', SUPABASE_URL + '/rest/v1/accounts?id=eq.' + encodeURIComponent(userId), true);
+      xhr.setRequestHeader('apikey', SUPABASE_KEY);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Prefer', 'return=minimal');
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          document.getElementById('user-changepw-modal').style.display = 'none';
+          showToast('[' + userId + '] 비밀번호 변경 완료', 'success');
+        } else {
+          err.textContent = '변경 실패: ' + xhr.responseText;
+        }
+      };
+      xhr.send(JSON.stringify({ pw_hash: h, pw_plain: encPw }));
+    });
+  });
 }
 function adminDeleteUser(el) {
   var userId = el.dataset.uid;
@@ -1072,6 +1100,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('admin-pw-confirm').addEventListener('keydown', function(e){ if(e.key==='Enter') checkAdminPw(); });
   document.getElementById('changepw-input').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('changepw-confirm').focus(); });
   document.getElementById('changepw-confirm').addEventListener('keydown', function(e){ if(e.key==='Enter') submitChangeAdminPw(); });
+  document.getElementById('user-changepw-input').addEventListener('keydown', function(e){ if(e.key==='Enter') submitUserChangePw(); });
 });
 
 function doLogin() {
