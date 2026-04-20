@@ -1227,24 +1227,14 @@ function downloadSelected() {
   if (!keys.length) return;
   var files = fileList.filter(function(f){ return selectedKeys[f.key]; });
 
-  // Signed URL로 순차 다운로드
+  // fetchWithAuth로 순차 다운로드
   var idx = 0;
   function downloadNext() {
     if (idx >= files.length) return;
     var f = files[idx++];
-    getSignedUrl(f.key, function(err, signedUrl) {
-      if (err) { showToast(f.name + ' 다운로드 실패', 'error'); downloadNext(); return; }
-      fetch(signedUrl)
-        .then(function(res){ return res.blob(); })
-        .then(function(blob){
-          var a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = f.name;
-          document.body.appendChild(a); a.click();
-          document.body.removeChild(a);
-          setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
-          setTimeout(downloadNext, 500);
-        });
+    fetchWithAuth(f.key, f.name, function(err) {
+      if (err) { showToast(f.name + ' 다운로드 실패', 'error'); }
+      setTimeout(downloadNext, 500);
     });
   }
   downloadNext();
@@ -1543,6 +1533,7 @@ function uploadFiles(files) {
 }
 
 // Signed URL 생성 (60초 유효)
+// Signed URL 생성 (60초 유효)
 function getSignedUrl(fileKey, cb) {
   var xhr = new XMLHttpRequest();
   xhr.open('POST', SUPABASE_URL + '/storage/v1/object/sign/' + BUCKET + '/' + fileKey, true);
@@ -1557,57 +1548,63 @@ function getSignedUrl(fileKey, cb) {
       var fullUrl = signedPath.startsWith('http') ? signedPath : SUPABASE_URL + signedPath;
       cb(null, fullUrl);
     } else {
-      cb(new Error('Signed URL 생성 실패 (' + xhr.status + '): ' + xhr.responseText.slice(0,100)), null);
+      cb(new Error('(' + xhr.status + ')'), null);
     }
   };
   xhr.send(JSON.stringify({ expiresIn: 60 }));
 }
 
+// 인증 헤더로 직접 다운로드
+function fetchWithAuth(fileKey, name, cb) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('GET', SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + fileKey, true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.responseType = 'blob';
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    if (xhr.status >= 200 && xhr.status < 300) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(xhr.response);
+      a.download = name;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+      cb(null);
+    } else {
+      cb(new Error('다운로드 실패 (' + xhr.status + ')'));
+    }
+  };
+  xhr.send();
+}
+
 // 다운로드
 function downloadFile(url, name, fileKey, isAdmin) {
-  getSignedUrl(fileKey || url.split('/').pop(), function(err, signedUrl) {
+  var key = fileKey || url.split('/files/').pop();
+  fetchWithAuth(key, name, function(err) {
     if (err) { showToast('다운로드 실패: ' + err.message, 'error'); return; }
-    fetch(signedUrl)
-      .then(function(res){ return res.blob(); })
-      .then(function(blob){
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = name;
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a);
-        setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
-
-        // 관리자 다운로드는 카운트 제외
-        if (isAdmin || !fileKey) return;
-
-        // 다운로드 횟수 증가 (남은 횟수 차감)
-        var f = fileList.find(function(x){ return x.key === fileKey; });
-        if (!f || !f.dbId) return;
-        var newDownloadCount = (f.downloadCount || 0) + 1;
-        var newRemain = Math.max(0, 2 - newDownloadCount);
-        f.downloadCount = newDownloadCount;
-        f.remainCount = newRemain;
-        renderFileList();
-
-        var xhr = new XMLHttpRequest();
-        xhr.open('PATCH', SUPABASE_URL + '/rest/v1/user_files?id=eq.' + f.dbId, true);
-        xhr.setRequestHeader('apikey', SUPABASE_KEY);
-        xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.setRequestHeader('Prefer', 'return=minimal');
-        xhr.send(JSON.stringify({ download_count: newDownloadCount }));
-
-        setTimeout(function() {
-          if (newRemain <= 0) {
-            showAutoDeleteModal(f.name, '자동 삭제됩니다.', function() {
-              deleteFile(fileKey, true);
-            });
-          } else {
-            showAutoDeleteModal(f.name, '다음번 추가 다운로드 시 자동 삭제됩니다.', null);
-          }
-        }, 300);
-      })
-      .catch(function(){ showToast('다운로드 실패', 'error'); });
+    if (isAdmin || !fileKey) return;
+    var f = fileList.find(function(x){ return x.key === fileKey; });
+    if (!f || !f.dbId) return;
+    var newDownloadCount = (f.downloadCount || 0) + 1;
+    var newRemain = Math.max(0, 2 - newDownloadCount);
+    f.downloadCount = newDownloadCount;
+    f.remainCount = newRemain;
+    renderFileList();
+    var xhr = new XMLHttpRequest();
+    xhr.open('PATCH', SUPABASE_URL + '/rest/v1/user_files?id=eq.' + f.dbId, true);
+    xhr.setRequestHeader('apikey', SUPABASE_KEY);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Prefer', 'return=minimal');
+    xhr.send(JSON.stringify({ download_count: newDownloadCount }));
+    setTimeout(function() {
+      if (newRemain <= 0) {
+        showAutoDeleteModal(f.name, '자동 삭제됩니다.', function() { deleteFile(fileKey, true); });
+      } else {
+        showAutoDeleteModal(f.name, '다음번 추가 다운로드 시 자동 삭제됩니다.', null);
+      }
+    }, 300);
   });
 }
 
