@@ -617,7 +617,7 @@ function loadUserData() {
     // 파일 로드
     sbQuery('user_files', 'user_id=eq.' + encodeURIComponent(currentUser) + '&order=uploaded_at.desc', function(e2, rows2) {
       fileList = (rows2||[]).map(function(r) {
-        return { key: r.key, name: r.name, size: r.size, url: r.url, date: r.uploaded_at ? r.uploaded_at.slice(0,10) : '', folder: r.folder||'기타', dbId: r.id };
+        return { key: r.key, name: r.name, size: r.size, url: r.url, date: r.uploaded_at ? r.uploaded_at.slice(0,10) : '', folder: r.folder||'기타', dbId: r.id, downloadCount: r.download_count||0 };
       });
       renderFolders(); renderFileList(); updateStorageInfo();
     });
@@ -750,7 +750,7 @@ function loadAdminData() {
                 '<div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + f.name + '</div>' +
                 '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' + fmtSize(f.size) + ' · ' + (f.uploaded_at||'').slice(0,10) + ' · 📂 ' + (f.folder||'기타') + '</div>' +
               '</div>' +
-              '<button onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\')" style="background:none;border:1px solid var(--border);color:var(--accent2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">다운</button>' +
+              '<button onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\',null,true)" style="background:none;border:1px solid var(--border);color:var(--accent2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">다운</button>' +
               '<button onclick="adminDeleteFile(this)" data-fid="' + f.id + '" data-fkey="' + f.key + '" style="background:none;border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">삭제</button>';
             fileList.appendChild(fRow);
           });
@@ -1105,7 +1105,7 @@ function renderFileList() {
     var actEl = document.createElement('div'); actEl.className = 'file-actions';
     actEl.innerHTML =
       '<button class="file-btn" onclick="moveFile(\'' + f.key + '\')">📂 <span>이동</span></button>' +
-      '<button class="file-btn" onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\')">⬇ <span>다운</span></button>' +
+      '<button class="file-btn" onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\',\'' + f.key + '\')">⬇ <span>다운</span></button>' +
       '<button class="file-btn danger" onclick="deleteFile(\'' + f.key + '\')">🗑 <span>삭제</span></button>';
 
     item.appendChild(cb);
@@ -1206,7 +1206,7 @@ function uploadFiles(files) {
 }
 
 // 다운로드
-function downloadFile(url, name) {
+function downloadFile(url, name, fileKey, isAdmin) {
   fetch(url)
     .then(function(res){ return res.blob(); })
     .then(function(blob){
@@ -1216,13 +1216,37 @@ function downloadFile(url, name) {
       document.body.appendChild(a); a.click();
       document.body.removeChild(a);
       setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+
+      // 관리자 다운로드는 카운트 제외
+      if (isAdmin || !fileKey) return;
+
+      // 다운로드 횟수 증가
+      var f = fileList.find(function(x){ return x.key === fileKey; });
+      if (!f || !f.dbId) return;
+      var newCount = (f.downloadCount || 0) + 1;
+      f.downloadCount = newCount;
+
+      var xhr = new XMLHttpRequest();
+      xhr.open('PATCH', SUPABASE_URL + '/rest/v1/user_files?id=eq.' + f.dbId, true);
+      xhr.setRequestHeader('apikey', SUPABASE_KEY);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Prefer', 'return=minimal');
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        if (newCount >= 2) {
+          // 2회 다운로드 시 자동 삭제
+          setTimeout(function(){ deleteFile(fileKey, true); }, 500);
+        }
+      };
+      xhr.send(JSON.stringify({ download_count: newCount }));
     })
     .catch(function(){ window.open(url, '_blank'); });
 }
 
 // 삭제
-function deleteFile(key) {
-  if (!confirm('삭제하시겠습니까?')) return;
+function deleteFile(key, silent) {
+  if (!silent && !confirm('삭제하시겠습니까?')) return;
   var f = fileList.find(function(x){ return x.key===key; });
   // Storage 삭제
   var xhr = new XMLHttpRequest();
@@ -1235,7 +1259,7 @@ function deleteFile(key) {
   if (f && f.dbId) sbDeleteRow('user_files', 'id=eq.' + f.dbId);
   fileList = fileList.filter(function(x){ return x.key !== key; });
   renderFileList(); updateStorageInfo();
-  showToast('삭제되었습니다');
+  showToast(silent ? '2회 다운로드로 파일이 자동 삭제되었습니다' : '삭제되었습니다');
 }
 
 // 이동
