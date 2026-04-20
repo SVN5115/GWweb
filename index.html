@@ -627,7 +627,7 @@ function loadUserData() {
     // 파일 로드
     sbQuery('user_files', 'user_id=eq.' + encodeURIComponent(currentUser) + '&order=uploaded_at.desc', function(e2, rows2) {
       fileList = (rows2||[]).map(function(r) {
-        return { key: r.key, name: r.name, size: r.size, url: r.url, date: r.uploaded_at ? r.uploaded_at.slice(0,10) : '', folder: r.folder||'기타', dbId: r.id, downloadCount: r.download_count||0 };
+        return { key: r.key, name: r.name, size: r.size, url: r.url, date: r.uploaded_at ? r.uploaded_at.slice(0,10) : '', folder: r.folder||'기타', dbId: r.id, downloadCount: r.download_count||0, remainCount: Math.max(0, 2-(r.download_count||0)) };
       });
       renderFolders(); renderFileList(); updateStorageInfo();
     });
@@ -803,7 +803,7 @@ function adminDeleteFile(el) {
   });
 }
 var _autoDeleteCallback = null;
-function showAutoDeleteModal(fileName, count, cb) {
+function showAutoDeleteModal(fileName, cb) {
   _autoDeleteCallback = cb;
   document.getElementById('autodel-title').textContent = '"' + fileName + '"';
   document.getElementById('autodel-msg').textContent = '2회 다운로드가 완료되어\n이 파일은 자동으로 삭제됩니다.';
@@ -1118,7 +1118,7 @@ function renderFileList() {
         '<span>' + fmtSize(f.size) + '</span>' +
         '<span>' + f.date + '</span>' +
         (f.folder !== '기타' ? '<span class="file-folder-badge">' + f.folder + '</span>' : '') +
-        '<span style="color:#f59e0b;">⬇ ' + (f.downloadCount||0) + '/2</span>' +
+        '<span style="color:' + (f.remainCount<=0?'#ff6b6b':f.remainCount===1?'#f59e0b':'#10b981') + ';">⬇ ' + (f.remainCount!==undefined?f.remainCount:2) + '/2</span>' +
       '</div>';
 
     var actEl = document.createElement('div'); actEl.className = 'file-actions';
@@ -1204,7 +1204,7 @@ function uploadFiles(files) {
           var dbId = Date.now().toString(36) + Math.random().toString(36).slice(2);
           var fileRow = { id: dbId, user_id: currentUser, key: key, name: file.name, size: uploadFile.size, url: url, folder: folder };
           sbUpsert('user_files', fileRow);
-          fileList.unshift({ key: key, name: file.name, size: uploadFile.size, url: url, date: dateStr, folder: folder, dbId: dbId });
+          fileList.unshift({ key: key, name: file.name, size: uploadFile.size, url: url, date: dateStr, folder: folder, dbId: dbId, downloadCount: 0, remainCount: 2 });
           var saved = file.size - uploadFile.size;
           var msg = file.name + ' 업로드 완료!';
           if (saved > 1024) msg += ' (' + fmtSize(saved) + ' 절약)';
@@ -1239,12 +1239,14 @@ function downloadFile(url, name, fileKey, isAdmin) {
       // 관리자 다운로드는 카운트 제외
       if (isAdmin || !fileKey) return;
 
-      // 다운로드 횟수 증가
+      // 다운로드 횟수 증가 (남은 횟수 차감)
       var f = fileList.find(function(x){ return x.key === fileKey; });
       if (!f || !f.dbId) return;
-      var newCount = (f.downloadCount || 0) + 1;
-      f.downloadCount = newCount;
-      renderFileList(); // 카운트 즉시 반영
+      var newDownloadCount = (f.downloadCount || 0) + 1;
+      var newRemain = Math.max(0, 2 - newDownloadCount);
+      f.downloadCount = newDownloadCount;
+      f.remainCount = newRemain;
+      renderFileList(); // 즉시 현행화
 
       var xhr = new XMLHttpRequest();
       xhr.open('PATCH', SUPABASE_URL + '/rest/v1/user_files?id=eq.' + f.dbId, true);
@@ -1254,18 +1256,15 @@ function downloadFile(url, name, fileKey, isAdmin) {
       xhr.setRequestHeader('Prefer', 'return=minimal');
       xhr.onreadystatechange = function() {
         if (xhr.readyState !== 4) return;
-        if (newCount >= 2) {
-          // 팝업 알림 후 삭제
-          var remain = 2 - newCount;
-          showAutoDeleteModal(f.name, newCount, function() {
+        if (newRemain <= 0) {
+          showAutoDeleteModal(f.name, function() {
             deleteFile(fileKey, true);
           });
         } else {
-          // 남은 횟수 알림
-          showToast('"' + f.name + '" — 다운로드 ' + newCount + '/2회 (1회 남음)', 'success');
+          showToast('"' + f.name + '" 다운로드 완료 — 남은 횟수: ' + newRemain + '회', 'success');
         }
       };
-      xhr.send(JSON.stringify({ download_count: newCount }));
+      xhr.send(JSON.stringify({ download_count: newDownloadCount }));
     })
     .catch(function(){ window.open(url, '_blank'); });
 }
