@@ -1553,9 +1553,11 @@ function getSignedUrl(fileKey, cb) {
     if (xhr.readyState !== 4) return;
     if (xhr.status >= 200 && xhr.status < 300) {
       var res = JSON.parse(xhr.responseText);
-      cb(null, SUPABASE_URL + res.signedURL);
+      var signedPath = res.signedURL || res.signedUrl || res.signed_url || '';
+      var fullUrl = signedPath.startsWith('http') ? signedPath : SUPABASE_URL + signedPath;
+      cb(null, fullUrl);
     } else {
-      cb(new Error('Signed URL 생성 실패'), null);
+      cb(new Error('Signed URL 생성 실패 (' + xhr.status + '): ' + xhr.responseText.slice(0,100)), null);
     }
   };
   xhr.send(JSON.stringify({ expiresIn: 60 }));
