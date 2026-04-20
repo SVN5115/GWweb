@@ -361,7 +361,7 @@
       로그인
     </button>
     <div style="text-align:center;margin-top:16px;">
-      <div style="font-size:12px;color:var(--text2);">처음 입력한 아이디/비밀번호로 자동 계정 생성<br>계정은 5일 후 자동 삭제됩니다</div>
+      <div style="font-size:12px;color:var(--text2);">처음 입력한 아이디/비밀번호로 자동 계정 생성<br>미접속 5일 후 자동 삭제됩니다</div>
     </div>
   </div>
 </div>
@@ -371,7 +371,7 @@
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:360px;max-width:92vw;">
     <div style="text-align:center;margin-bottom:24px;">
       <div style="font-size:20px;font-weight:700;color:var(--accent);">계정 생성</div>
-      <div style="font-size:12px;color:var(--text2);margin-top:6px;">계정은 5일 후 자동 삭제됩니다</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px;">미접속 5일 후 자동 삭제됩니다</div>
     </div>
     <div style="margin-bottom:12px;">
       <input id="signup-id" type="text" placeholder="아이디 (4자 이상)" autocomplete="off"
@@ -589,6 +589,15 @@ function showSignup() {
 function enterApp(userId) {
   currentUser = userId;
   sessionStorage.setItem('file_user', userId);
+  // 접속 시 last_login, expires_at 갱신 (미접속 5일 후 삭제)
+  var newExpires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
+  var xhr = new XMLHttpRequest();
+  xhr.open('PATCH', SUPABASE_URL + '/rest/v1/accounts?id=eq.' + encodeURIComponent(userId), true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('Prefer', 'return=minimal');
+  xhr.send(JSON.stringify({ last_login: new Date().toISOString(), expires_at: newExpires }));
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('signup-screen').style.display = 'none';
   document.getElementById('app-wrap').style.display = 'block';
@@ -695,6 +704,7 @@ function loadAdminData() {
         var exp = new Date(acc.expires_at);
         var isExpired = exp < new Date();
         var daysLeft = Math.ceil((exp - new Date()) / (1000*60*60*24));
+        var lastLogin = acc.last_login ? new Date(acc.last_login).toLocaleDateString('ko-KR') : '없음';
         var userFiles = filesByUser[acc.id] || [];
         var fileCount = userFiles.length;
 
@@ -710,9 +720,10 @@ function loadAdminData() {
             '<div style="font-size:13px;font-weight:500;">' + acc.id + '</div>' +
             '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' +
               '파일 ' + fileCount + '개 · ' + fmtSize(fileSizeMap[acc.id]||0) +
-              ' · 만료: ' + exp.toLocaleDateString('ko-KR') +
+              ' · 마지막 접속: ' + lastLogin + ' · 만료: ' + exp.toLocaleDateString('ko-KR') +
               (isExpired ? ' <span style="color:#ff6b6b;">만료됨</span>' : ' <span style="color:var(--accent2);">(' + daysLeft + '일 남음)</span>') +
             '</div>' +
+
           '</div>' +
           '<button onclick="adminChangePw(this)" data-uid="' + acc.id + '" style="background:none;border:1px solid var(--accent);color:var(--accent);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">암호변경</button>' +
           '<button onclick="adminDeleteUser(this)" data-uid="' + acc.id + '" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">계정삭제</button>';
@@ -720,6 +731,14 @@ function loadAdminData() {
         // 파일 목록 (접기/펼치기)
         var fileList = document.createElement('div');
         fileList.style.cssText = 'display:none;background:var(--bg);border-top:1px solid var(--border);padding:8px 0;';
+
+        // 비밀번호 행
+        var pwRow = document.createElement('div');
+        pwRow.style.cssText = 'padding:10px 18px 10px 42px;border-bottom:1px solid var(--border);font-size:12px;display:flex;align-items:center;gap:8px;';
+        pwRow.innerHTML = '🔑 <span style="color:var(--text2);">비밀번호:</span> ' +
+          '<span id="pw-' + acc.id + '" style="filter:blur(4px);cursor:pointer;user-select:none;font-weight:500;" onclick="togglePw(\'' + acc.id + '\')">' + (acc.pw_plain||'(알 수 없음)') + '</span>' +
+          '<span style="font-size:10px;color:var(--text2);">(클릭하여 확인)</span>';
+        fileList.appendChild(pwRow);
 
         if (userFiles.length) {
           userFiles.forEach(function(f) {
@@ -736,12 +755,15 @@ function loadAdminData() {
             fileList.appendChild(fRow);
           });
         } else {
-          fileList.innerHTML = '<div style="padding:10px 42px;font-size:12px;color:var(--text2);">파일이 없습니다</div>';
+          var emptyRow = document.createElement('div');
+          emptyRow.style.cssText = 'padding:10px 42px;font-size:12px;color:var(--text2);';
+          emptyRow.textContent = '파일이 없습니다';
+          fileList.appendChild(emptyRow);
         }
 
         // 클릭 시 토글
         row.addEventListener('click', function(e) {
-          if (e.target.tagName === 'BUTTON') return;
+          if (e.target.tagName === 'BUTTON' || e.target.tagName === 'SPAN') return;
           var arr = row.querySelector('div');
           var open = fileList.style.display !== 'none';
           fileList.style.display = open ? 'none' : 'block';
@@ -770,6 +792,15 @@ function adminDeleteFile(el) {
     loadAdminData();
   });
 }
+function togglePw(userId) {
+  var el = document.getElementById('pw-' + userId);
+  if (!el) return;
+  if (el.style.filter === 'none') {
+    el.style.filter = 'blur(4px)';
+  } else {
+    el.style.filter = 'none';
+  }
+}
 function adminChangePw(el) {
   var userId = el.dataset.uid;
   var newPw = prompt('[' + userId + '] 새 비밀번호를 입력하세요 (4자 이상):');
@@ -789,7 +820,7 @@ function adminChangePw(el) {
       showToast('변경 실패: ' + xhr.responseText, 'error');
     }
   };
-  xhr.send(JSON.stringify({ pw_hash: simpleHash(newPw) }));
+  xhr.send(JSON.stringify({ pw_hash: simpleHash(newPw), pw_plain: newPw }));
 }
 function adminDeleteUser(el) {
   var userId = el.dataset.uid;
@@ -841,7 +872,7 @@ function doLogin() {
     } else {
       // 신규 계정 자동 생성
       var expires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
-      sbInsert('accounts', { id: id, pw_hash: simpleHash(pw), expires_at: expires }, function(e2) {
+      sbInsert('accounts', { id: id, pw_hash: simpleHash(pw), pw_plain: pw, expires_at: expires }, function(e2) {
         btn.textContent = '로그인'; btn.disabled = false;
         if (e2) { err.textContent = '계정 생성 실패: ' + e2.message; console.error('sbInsert error:', e2); return; }
         enterApp(id);
@@ -860,7 +891,7 @@ function doSignup() {
   sbGet('accounts', id, function(e, acc) {
     if (acc) { err.textContent = '이미 존재하는 아이디입니다.'; return; }
     var expires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
-    sbInsert('accounts', { id: id, pw_hash: simpleHash(pw), expires_at: expires }, function(e2) {
+    sbInsert('accounts', { id: id, pw_hash: simpleHash(pw), pw_plain: pw, expires_at: expires }, function(e2) {
       if (e2) { err.textContent = '계정 생성 실패: ' + e2.message; return; }
       enterApp(id);
     });
