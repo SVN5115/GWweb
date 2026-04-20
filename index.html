@@ -343,6 +343,22 @@
   </div>
 </div>
 
+<!-- 관리자 비밀번호 변경 모달 -->
+<div id="admin-changepw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:999999;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid #ff6b6b;border-radius:16px;padding:28px 28px;width:340px;max-width:92vw;">
+    <div style="font-size:15px;font-weight:700;margin-bottom:16px;color:#ff6b6b;">🔐 관리자 비밀번호 변경</div>
+    <input id="changepw-input" type="password" placeholder="새 비밀번호 (6자 이상)"
+      style="width:100%;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box;">
+    <input id="changepw-confirm" type="password" placeholder="비밀번호 확인"
+      style="width:100%;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box;">
+    <div id="changepw-error" style="color:#ff6b6b;font-size:12px;margin-bottom:12px;min-height:16px;"></div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="submitChangeAdminPw()" style="flex:1;padding:10px;background:#ff6b6b;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">변경</button>
+      <button onclick="document.getElementById('admin-changepw-modal').style.display='none'" style="flex:1;padding:10px;background:none;border:1px solid var(--border);color:var(--text2);border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit;">취소</button>
+    </div>
+  </div>
+</div>
+
 <!-- 로그인 화면 -->
 <div id="login-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;">
   <!-- 숨김 관리자 트리거 -->
@@ -511,6 +527,11 @@ async function sha256(str) {
   var buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
 }
+// XSS 방지용 이스케이프
+function esc(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // Supabase REST
 function sbGet(table, id, cb) {
   var xhr = new XMLHttpRequest();
@@ -577,13 +598,6 @@ function sbDeleteRow(table, filter, cb) {
     if (xhr.readyState !== 4) return;
     if (cb) cb(xhr.status >= 200 && xhr.status < 300 ? null : new Error(xhr.responseText));
   };
-  xhr.send();
-}
-function sbDeleteExpired() {
-  var xhr = new XMLHttpRequest();
-  xhr.open('DELETE', SUPABASE_URL + '/rest/v1/accounts?expires_at=lt.' + new Date().toISOString(), true);
-  xhr.setRequestHeader('apikey', SUPABASE_KEY);
-  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
   xhr.send();
 }
 
@@ -747,11 +761,18 @@ function checkAdminPw() {
   }
 }
 function changeAdminPw() {
-  var newPw = prompt('새 관리자 비밀번호를 입력하세요 (6자 이상):');
-  if (!newPw) return;
-  if (newPw.length < 6) { alert('비밀번호는 6자 이상이어야 합니다.'); return; }
-  var newPw2 = prompt('비밀번호를 한 번 더 입력하세요:');
-  if (newPw !== newPw2) { alert('비밀번호가 일치하지 않습니다.'); return; }
+  document.getElementById('changepw-input').value = '';
+  document.getElementById('changepw-confirm').value = '';
+  document.getElementById('changepw-error').textContent = '';
+  document.getElementById('admin-changepw-modal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('changepw-input').focus(); }, 100);
+}
+function submitChangeAdminPw() {
+  var newPw = document.getElementById('changepw-input').value;
+  var newPw2 = document.getElementById('changepw-confirm').value;
+  var err = document.getElementById('changepw-error');
+  if (!newPw || newPw.length < 6) { err.textContent = '비밀번호는 6자 이상이어야 합니다.'; return; }
+  if (newPw !== newPw2) { err.textContent = '비밀번호가 일치하지 않습니다.'; return; }
   sha256(newPw).then(function(hash) {
     var xhr = new XMLHttpRequest();
     xhr.open('POST', SUPABASE_URL + '/rest/v1/admin_config', true);
@@ -761,8 +782,12 @@ function changeAdminPw() {
     xhr.setRequestHeader('Prefer', 'resolution=merge-duplicates,return=minimal');
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== 4) return;
-      if (xhr.status >= 200 && xhr.status < 300) { showToast('관리자 비밀번호 변경 완료', 'success'); }
-      else { showToast('변경 실패: ' + xhr.responseText, 'error'); }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        document.getElementById('admin-changepw-modal').style.display = 'none';
+        showToast('관리자 비밀번호 변경 완료', 'success');
+      } else {
+        err.textContent = '변경 실패: ' + xhr.responseText;
+      }
     };
     xhr.send(JSON.stringify({ key: 'admin_pw_hash', value: hash }));
   });
@@ -807,16 +832,15 @@ function loadAdminData() {
         row.innerHTML =
           '<div style="font-size:13px;color:var(--text2);flex-shrink:0;">▶</div>' +
           '<div style="flex:1;min-width:0;">' +
-            '<div style="font-size:13px;font-weight:500;">' + acc.id + '</div>' +
+            '<div style="font-size:13px;font-weight:500;">' + esc(acc.id) + '</div>' +
             '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' +
               '파일 ' + fileCount + '개 · ' + fmtSize(fileSizeMap[acc.id]||0) +
-              ' · 마지막 접속: ' + lastLogin + ' · 만료: ' + exp.toLocaleDateString('ko-KR') +
+              ' · 마지막 접속: ' + esc(lastLogin) + ' · 만료: ' + esc(exp.toLocaleDateString('ko-KR')) +
               (isExpired ? ' <span style="color:#ff6b6b;">만료됨</span>' : ' <span style="color:var(--accent2);">(' + daysLeft + '일 남음)</span>') +
             '</div>' +
-
           '</div>' +
-          '<button onclick="adminChangePw(this)" data-uid="' + acc.id + '" style="background:none;border:1px solid var(--accent);color:var(--accent);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">암호변경</button>' +
-          '<button onclick="adminDeleteUser(this)" data-uid="' + acc.id + '" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">계정삭제</button>';
+          '<button onclick="adminChangePw(this)" data-uid="' + esc(acc.id) + '" style="background:none;border:1px solid var(--accent);color:var(--accent);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">암호변경</button>' +
+          '<button onclick="adminDeleteUser(this)" data-uid="' + esc(acc.id) + '" style="background:none;border:1px solid #ff6b6b;color:#ff6b6b;padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">계정삭제</button>';
 
         // 파일 목록 (접기/펼치기)
         var fileList = document.createElement('div');
@@ -826,7 +850,7 @@ function loadAdminData() {
         var pwRow = document.createElement('div');
         pwRow.style.cssText = 'padding:10px 18px 10px 42px;border-bottom:1px solid var(--border);font-size:12px;display:flex;align-items:center;gap:8px;';
         pwRow.innerHTML = '🔑 <span style="color:var(--text2);">비밀번호:</span> ' +
-          '<span id="pw-' + acc.id + '" style="filter:blur(4px);cursor:pointer;user-select:none;font-weight:500;" onclick="togglePw(\'' + acc.id + '\')">' + (acc.pw_plain||'(알 수 없음)') + '</span>' +
+          '<span id="pw-' + esc(acc.id) + '" style="filter:blur(4px);cursor:pointer;user-select:none;font-weight:500;" onclick="togglePw(\'' + esc(acc.id) + '\')">' + esc(acc.pw_plain||'(알 수 없음)') + '</span>' +
           '<span style="font-size:10px;color:var(--text2);">(클릭하여 확인)</span>';
         fileList.appendChild(pwRow);
 
@@ -837,11 +861,11 @@ function loadAdminData() {
             fRow.innerHTML =
               '<div style="font-size:18px;flex-shrink:0;">' + (fileIcon(f.name, true)||'📁') + '</div>' +
               '<div style="flex:1;min-width:0;">' +
-                '<div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + f.name + '</div>' +
-                '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' + fmtSize(f.size) + ' · ' + (f.uploaded_at||'').slice(0,10) + ' · 📂 ' + (f.folder||'기타') + '</div>' +
+                '<div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(f.name) + '</div>' +
+                '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' + fmtSize(f.size) + ' · ' + esc((f.uploaded_at||'').slice(0,10)) + ' · 📂 ' + esc(f.folder||'기타') + '</div>' +
               '</div>' +
-              '<button onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\',\'' + f.key + '\',true)" style="background:none;border:1px solid var(--border);color:var(--accent2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">다운</button>' +
-              '<button onclick="adminDeleteFile(this)" data-fid="' + f.id + '" data-fkey="' + f.key + '" style="background:none;border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">삭제</button>';
+              '<button onclick="downloadFile(\'' + esc(f.url) + '\',\'' + esc(f.name) + '\',\'' + esc(f.key) + '\',true)" style="background:none;border:1px solid var(--border);color:var(--accent2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">다운</button>' +
+              '<button onclick="adminDeleteFile(this)" data-fid="' + esc(f.id) + '" data-fkey="' + esc(f.key) + '" style="background:none;border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">삭제</button>';
             fileList.appendChild(fRow);
           });
         } else {
@@ -948,6 +972,8 @@ function adminDeleteUser(el) {
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('admin-pw-input').addEventListener('keydown', function(e){ if(e.key==='Enter') checkAdminPw(); });
   document.getElementById('admin-pw-confirm').addEventListener('keydown', function(e){ if(e.key==='Enter') checkAdminPw(); });
+  document.getElementById('changepw-input').addEventListener('keydown', function(e){ if(e.key==='Enter') document.getElementById('changepw-confirm').focus(); });
+  document.getElementById('changepw-confirm').addEventListener('keydown', function(e){ if(e.key==='Enter') submitChangeAdminPw(); });
 });
 
 function doLogin() {
@@ -959,7 +985,6 @@ function doLogin() {
   var btn = document.getElementById('login-btn');
   btn.textContent = '확인 중...'; btn.disabled = true;
   err.textContent = '';
-  sbDeleteExpired();
   sha256(pw).then(function(pwHash) {
     sbGet('accounts', id, function(e, acc) {
       if (e) {
@@ -1273,21 +1298,21 @@ function renderFileList() {
 
     var infoEl = document.createElement('div'); infoEl.className = 'file-info';
     infoEl.innerHTML =
-      '<div class="file-name" title="' + f.name + '">' + f.name + '</div>' +
+      '<div class="file-name" title="' + esc(f.name) + '">' + esc(f.name) + '</div>' +
       '<div class="file-meta">' +
         '<span>' + fmtSize(f.size) + '</span>' +
-        '<span>' + f.date + '</span>' +
-        (f.folder !== '기타' ? '<span class="file-folder-badge">' + f.folder + '</span>' : '') +
+        '<span>' + esc(f.date) + '</span>' +
+        (f.folder !== '기타' ? '<span class="file-folder-badge">' + esc(f.folder) + '</span>' : '') +
         '<span style="color:' + (f.remainCount<=0?'#ff6b6b':f.remainCount===1?'#f59e0b':'#10b981') + ';">⬇ ' + (f.remainCount!==undefined?f.remainCount:2) + '/2</span>' +
       '</div>';
 
     var actEl = document.createElement('div'); actEl.className = 'file-actions';
     actEl.innerHTML =
-      '<button class="file-btn" onclick="moveFile(\'' + f.key + '\')">📂 <span>이동</span></button>' +
+      '<button class="file-btn" onclick="moveFile(\'' + esc(f.key) + '\')">📂 <span>이동</span></button>' +
       (f.remainCount > 0
-        ? '<button class="file-btn" onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\',\'' + f.key + '\')">⬇ <span>다운</span></button>'
+        ? '<button class="file-btn" onclick="downloadFile(\'' + esc(f.url) + '\',\'' + esc(f.name) + '\',\'' + esc(f.key) + '\')">⬇ <span>다운</span></button>'
         : '<button class="file-btn" disabled style="opacity:0.35;cursor:not-allowed;">⬇ <span>다운</span></button>') +
-      '<button class="file-btn danger" onclick="deleteFile(\'' + f.key + '\')">🗑 <span>삭제</span></button>';
+      '<button class="file-btn danger" onclick="deleteFile(\'' + esc(f.key) + '\')">🗑 <span>삭제</span></button>';
 
     item.appendChild(cb);
     item.appendChild(iconEl);
