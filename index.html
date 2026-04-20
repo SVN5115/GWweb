@@ -391,7 +391,11 @@
       <input id="login-pw" type="password" placeholder="비밀번호"
         style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;">
     </div>
-    <div id="login-error" style="color:#ff6b6b;font-size:12px;margin-bottom:10px;min-height:16px;"></div>
+    <div id="login-error" style="color:#ff6b6b;font-size:12px;margin-bottom:6px;min-height:16px;"></div>
+    <div id="login-fail-info" style="display:none;font-size:12px;margin-bottom:10px;text-align:center;padding:8px;background:rgba(255,107,107,0.1);border:1px solid rgba(255,107,107,0.3);border-radius:8px;line-height:1.6;">
+      <span id="login-fail-count" style="color:#ff6b6b;font-weight:700;"></span><br>
+      <span style="color:var(--text2);">10회 실패 시 계정이 자동 삭제됩니다</span>
+    </div>
     <button id="login-btn" onclick="doLogin()"
       style="width:100%;padding:12px;background:var(--accent);color:white;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit;">
       로그인
@@ -653,6 +657,7 @@ function showLogin() {
   document.getElementById('signup-screen').style.display = 'none';
   document.getElementById('app-wrap').style.display = 'none';
   document.getElementById('login-error').textContent = '';
+  document.getElementById('login-fail-info').style.display = 'none';
 }
 function showSignup() {
   document.getElementById('login-screen').style.display = 'none';
@@ -1103,15 +1108,19 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('user-changepw-input').addEventListener('keydown', function(e){ if(e.key==='Enter') submitUserChangePw(); });
 });
 
+var _loginFailCount = {};
 function doLogin() {
   var id = document.getElementById('login-id').value.trim();
   var pw = document.getElementById('login-pw').value;
   var err = document.getElementById('login-error');
+  var failInfo = document.getElementById('login-fail-info');
+  var failCount = document.getElementById('login-fail-count');
   if (!id || id.length < 2) { err.textContent = '아이디는 2자 이상이어야 합니다.'; return; }
   if (!pw || pw.length < 4) { err.textContent = '비밀번호는 4자 이상이어야 합니다.'; return; }
   var btn = document.getElementById('login-btn');
   btn.textContent = '확인 중...'; btn.disabled = true;
   err.textContent = '';
+
   sha256(pw).then(function(pwHash) {
     sbGet('accounts', id, function(e, acc) {
       if (e) {
@@ -1121,11 +1130,44 @@ function doLogin() {
       }
       if (acc) {
         if (acc.pw_hash === pwHash) {
+          _loginFailCount[id] = 0;
+          failInfo.style.display = 'none';
           btn.textContent = '로그인'; btn.disabled = false;
           enterApp(id);
         } else {
           btn.textContent = '로그인'; btn.disabled = false;
+          _loginFailCount[id] = (_loginFailCount[id] || 0) + 1;
+          var cnt = _loginFailCount[id];
+          var remain = 10 - cnt;
           err.textContent = '비밀번호가 틀렸습니다.';
+          if (cnt >= 1) {
+            failInfo.style.display = 'block';
+            failCount.textContent = '로그인 실패 ' + cnt + '회 / 10회 (남은 횟수: ' + remain + '회)';
+          }
+          if (cnt >= 10) {
+            err.textContent = '10회 실패로 계정이 삭제됩니다.';
+            failInfo.style.display = 'none';
+            btn.disabled = true;
+            // 파일 삭제 후 계정 삭제
+            sbQuery('user_files', 'user_id=eq.' + encodeURIComponent(id), function(e2, files) {
+              if (files && files.length) {
+                var keys = files.map(function(f){ return f.key; });
+                var xhr = new XMLHttpRequest();
+                xhr.open('DELETE', SUPABASE_URL + '/storage/v1/object/' + BUCKET, true);
+                xhr.setRequestHeader('apikey', SUPABASE_KEY);
+                xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.send(JSON.stringify({ prefixes: keys }));
+              }
+              sbDeleteRow('accounts', 'id=eq.' + encodeURIComponent(id), function() {
+                setTimeout(function() {
+                  _loginFailCount[id] = 0;
+                  err.textContent = '계정이 삭제되었습니다.';
+                  btn.textContent = '로그인'; btn.disabled = false;
+                }, 1500);
+              });
+            });
+          }
         }
       } else {
         // 신규 계정 자동 생성 (SHA-256)
@@ -1406,9 +1448,23 @@ function renderFileList() {
     var iconEl;
     if (!icon) {
       iconEl = document.createElement('img');
-      iconEl.className = 'file-img-thumb'; iconEl.src = f.url;
+      iconEl.className = 'file-img-thumb';
       iconEl.style.cursor = 'zoom-in';
-      iconEl.onclick = function(){ previewImg(f.url); };
+      iconEl.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; // 빈 placeholder
+      (function(el, key, name) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + key, true);
+        xhr.setRequestHeader('apikey', SUPABASE_KEY);
+        xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+        xhr.responseType = 'blob';
+        xhr.onreadystatechange = function() {
+          if (xhr.readyState !== 4 || xhr.status < 200 || xhr.status >= 300) return;
+          var blobUrl = URL.createObjectURL(xhr.response);
+          el.src = blobUrl;
+          el.onclick = function() { previewImgBlob(blobUrl, name); };
+        };
+        xhr.send();
+      })(iconEl, f.key, f.name);
     } else if (icon.startsWith && icon.startsWith('data:')) {
       iconEl = document.createElement('img');
       iconEl.src = icon; iconEl.style.cssText='width:36px;height:36px;object-fit:contain;flex-shrink:0;';
@@ -1656,6 +1712,10 @@ function moveFile(key) {
 // 이미지 미리보기
 function previewImg(url) {
   document.getElementById('preview-img').src = url;
+  document.getElementById('preview-overlay').classList.add('visible');
+}
+function previewImgBlob(blobUrl, name) {
+  document.getElementById('preview-img').src = blobUrl;
   document.getElementById('preview-overlay').classList.add('visible');
 }
 
