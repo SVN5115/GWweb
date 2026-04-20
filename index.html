@@ -803,10 +803,10 @@ function adminDeleteFile(el) {
   });
 }
 var _autoDeleteCallback = null;
-function showAutoDeleteModal(fileName, cb) {
+function showAutoDeleteModal(fileName, msg, cb) {
   _autoDeleteCallback = cb;
   document.getElementById('autodel-title').textContent = '"' + fileName + '"';
-  document.getElementById('autodel-msg').textContent = '2회 다운로드가 완료되어\n이 파일은 자동으로 삭제됩니다.';
+  document.getElementById('autodel-msg').textContent = msg;
   document.getElementById('autodel-modal').style.display = 'flex';
 }
 function confirmAutoDelete() {
@@ -1257,11 +1257,11 @@ function downloadFile(url, name, fileKey, isAdmin) {
       xhr.onreadystatechange = function() {
         if (xhr.readyState !== 4) return;
         if (newRemain <= 0) {
-          showAutoDeleteModal(f.name, function() {
+          showAutoDeleteModal(f.name, '자동 삭제됩니다.', function() {
             deleteFile(fileKey, true);
           });
         } else {
-          showToast('"' + f.name + '" 다운로드 완료 — 남은 횟수: ' + newRemain + '회', 'success');
+          showAutoDeleteModal(f.name, '다음번 추가 다운로드 시 자동 삭제됩니다.', null);
         }
       };
       xhr.send(JSON.stringify({ download_count: newDownloadCount }));
