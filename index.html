@@ -479,7 +479,7 @@
   <div style="background:var(--surface);border:1px solid #f59e0b;border-radius:16px;padding:28px 28px;width:360px;max-width:92vw;text-align:center;">
     <div style="font-size:36px;margin-bottom:12px;">🗑</div>
     <div id="autodel-title" style="font-size:15px;font-weight:700;margin-bottom:8px;"></div>
-    <div id="autodel-msg" style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6;"></div>
+    <div id="autodel-msg" style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6;white-space:pre-wrap;text-align:left;max-height:200px;overflow-y:auto;"></div>
     <button onclick="confirmAutoDelete()" style="width:100%;padding:11px;background:#f59e0b;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">확인</button>
   </div>
 </div>
@@ -1010,14 +1010,76 @@ function downloadSelected() {
   var keys = Object.keys(selectedKeys);
   if (!keys.length) return;
   var files = fileList.filter(function(f){ return selectedKeys[f.key]; });
-  var i = 0;
-  function next() {
-    if (i >= files.length) { clearSelection(); showToast(files.length + '개 다운로드 완료', 'success'); return; }
-    var f = files[i++];
-    downloadFile(f.url, f.name, f.key);
-    setTimeout(next, 500);
-  }
-  next();
+
+  // 먼저 모든 파일 다운로드 실행
+  files.forEach(function(f) {
+    fetch(f.url)
+      .then(function(res){ return res.blob(); })
+      .then(function(blob){
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = f.name;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+      });
+  });
+
+  // 카운트 업데이트 및 팝업 메시지 수집
+  var willDelete = []; // 0/2 남은 파일
+  var willWarn = [];   // 1/2 남은 파일
+
+  files.forEach(function(f) {
+    if (!f.dbId) return;
+    var newCount = (f.downloadCount || 0) + 1;
+    var newRemain = Math.max(0, 2 - newCount);
+    f.downloadCount = newCount;
+    f.remainCount = newRemain;
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('PATCH', SUPABASE_URL + '/rest/v1/user_files?id=eq.' + f.dbId, true);
+    xhr.setRequestHeader('apikey', SUPABASE_KEY);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Prefer', 'return=minimal');
+    xhr.send(JSON.stringify({ download_count: newCount }));
+
+    if (newRemain <= 0) willDelete.push(f);
+    else willWarn.push(f);
+  });
+
+  renderFileList();
+  clearSelection();
+
+  // 팝업 한 번에 표시
+  setTimeout(function() {
+    var allNames = files.map(function(f){ return '• ' + f.name; }).join('\n');
+    if (willDelete.length > 0 && willWarn.length === 0) {
+      // 전부 삭제 대상
+      showAutoDeleteModal(
+        files.length + '개 파일',
+        allNames + '\n\n자동 삭제됩니다.',
+        function() { willDelete.forEach(function(f){ deleteFile(f.key, true); }); }
+      );
+    } else if (willDelete.length > 0) {
+      // 일부 삭제, 일부 경고
+      var delNames = willDelete.map(function(f){ return '• ' + f.name; }).join('\n');
+      var warnNames = willWarn.map(function(f){ return '• ' + f.name; }).join('\n');
+      showAutoDeleteModal(
+        files.length + '개 파일 다운로드',
+        (willDelete.length ? '[삭제 예정]\n' + delNames + '\n\n' : '') +
+        (willWarn.length ? '[다음 다운로드 시 삭제]\n' + warnNames : ''),
+        function() { willDelete.forEach(function(f){ deleteFile(f.key, true); }); }
+      );
+    } else if (willWarn.length > 0) {
+      // 전부 경고만
+      showAutoDeleteModal(
+        files.length + '개 파일',
+        allNames + '\n\n다음번 추가 다운로드 시 자동 삭제됩니다.',
+        null
+      );
+    }
+  }, 400);
 }
 var moveTargetKey = null;
 
