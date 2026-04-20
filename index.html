@@ -473,6 +473,16 @@
   </div>
 </div>
 
+<!-- 자동삭제 알림 모달 -->
+<div id="autodel-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid #f59e0b;border-radius:16px;padding:28px 28px;width:360px;max-width:92vw;text-align:center;">
+    <div style="font-size:36px;margin-bottom:12px;">🗑</div>
+    <div id="autodel-title" style="font-size:15px;font-weight:700;margin-bottom:8px;"></div>
+    <div id="autodel-msg" style="font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.6;"></div>
+    <button onclick="confirmAutoDelete()" style="width:100%;padding:11px;background:#f59e0b;color:white;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;">확인</button>
+  </div>
+</div>
+
 <!-- 이미지 미리보기 -->
 <div class="preview-overlay" id="preview-overlay" onclick="this.classList.remove('visible')">
   <img id="preview-img" src="">
@@ -792,6 +802,18 @@ function adminDeleteFile(el) {
     loadAdminData();
   });
 }
+var _autoDeleteCallback = null;
+function showAutoDeleteModal(fileName, count, cb) {
+  _autoDeleteCallback = cb;
+  document.getElementById('autodel-title').textContent = '"' + fileName + '"';
+  document.getElementById('autodel-msg').textContent = '2회 다운로드가 완료되어\n이 파일은 자동으로 삭제됩니다.';
+  document.getElementById('autodel-modal').style.display = 'flex';
+}
+function confirmAutoDelete() {
+  document.getElementById('autodel-modal').style.display = 'none';
+  if (_autoDeleteCallback) { _autoDeleteCallback(); _autoDeleteCallback = null; }
+}
+
 function togglePw(userId) {
   var el = document.getElementById('pw-' + userId);
   if (!el) return;
@@ -1222,6 +1244,7 @@ function downloadFile(url, name, fileKey, isAdmin) {
       if (!f || !f.dbId) return;
       var newCount = (f.downloadCount || 0) + 1;
       f.downloadCount = newCount;
+      renderFileList(); // 카운트 즉시 반영
 
       var xhr = new XMLHttpRequest();
       xhr.open('PATCH', SUPABASE_URL + '/rest/v1/user_files?id=eq.' + f.dbId, true);
@@ -1232,8 +1255,14 @@ function downloadFile(url, name, fileKey, isAdmin) {
       xhr.onreadystatechange = function() {
         if (xhr.readyState !== 4) return;
         if (newCount >= 2) {
-          // 2회 다운로드 시 자동 삭제
-          setTimeout(function(){ deleteFile(fileKey, true); }, 500);
+          // 팝업 알림 후 삭제
+          var remain = 2 - newCount;
+          showAutoDeleteModal(f.name, newCount, function() {
+            deleteFile(fileKey, true);
+          });
+        } else {
+          // 남은 횟수 알림
+          showToast('"' + f.name + '" — 다운로드 ' + newCount + '/2회 (1회 남음)', 'success');
         }
       };
       xhr.send(JSON.stringify({ download_count: newCount }));
