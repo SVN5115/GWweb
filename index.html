@@ -814,7 +814,7 @@ var _autoDeleteCallback = null;
 function showAutoDeleteModal(fileName, msg, cb) {
   _autoDeleteCallback = cb;
   document.getElementById('autodel-title').textContent = '"' + fileName + '"';
-  document.getElementById('autodel-msg').textContent = msg;
+  document.getElementById('autodel-msg').innerHTML = msg.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>');
   document.getElementById('autodel-modal').style.display = 'flex';
 }
 function confirmAutoDelete() {
@@ -1216,7 +1216,9 @@ function renderFileList() {
     var actEl = document.createElement('div'); actEl.className = 'file-actions';
     actEl.innerHTML =
       '<button class="file-btn" onclick="moveFile(\'' + f.key + '\')">📂 <span>이동</span></button>' +
-      '<button class="file-btn" onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\',\'' + f.key + '\')">⬇ <span>다운</span></button>' +
+      (f.remainCount > 0
+        ? '<button class="file-btn" onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\',\'' + f.key + '\')">⬇ <span>다운</span></button>'
+        : '<button class="file-btn" disabled style="opacity:0.35;cursor:not-allowed;">⬇ <span>다운</span></button>') +
       '<button class="file-btn danger" onclick="deleteFile(\'' + f.key + '\')">🗑 <span>삭제</span></button>';
 
     item.appendChild(cb);
