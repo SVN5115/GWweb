@@ -840,7 +840,7 @@ function loadAdminData() {
                 '<div style="font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + f.name + '</div>' +
                 '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' + fmtSize(f.size) + ' · ' + (f.uploaded_at||'').slice(0,10) + ' · 📂 ' + (f.folder||'기타') + '</div>' +
               '</div>' +
-              '<button onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\',null,true)" style="background:none;border:1px solid var(--border);color:var(--accent2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">다운</button>' +
+              '<button onclick="downloadFile(\'' + f.url + '\',\'' + f.name + '\',\'' + f.key + '\',true)" style="background:none;border:1px solid var(--border);color:var(--accent2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">다운</button>' +
               '<button onclick="adminDeleteFile(this)" data-fid="' + f.id + '" data-fkey="' + f.key + '" style="background:none;border:1px solid var(--border);color:var(--text2);padding:4px 10px;border-radius:5px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">삭제</button>';
             fileList.appendChild(fRow);
           });
@@ -1071,23 +1071,31 @@ function downloadSelected() {
   if (!keys.length) return;
   var files = fileList.filter(function(f){ return selectedKeys[f.key]; });
 
-  // 먼저 모든 파일 다운로드 실행
-  files.forEach(function(f) {
-    fetch(f.url)
-      .then(function(res){ return res.blob(); })
-      .then(function(blob){
-        var a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = f.name;
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a);
-        setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
-      });
-  });
+  // Signed URL로 순차 다운로드
+  var idx = 0;
+  function downloadNext() {
+    if (idx >= files.length) return;
+    var f = files[idx++];
+    getSignedUrl(f.key, function(err, signedUrl) {
+      if (err) { showToast(f.name + ' 다운로드 실패', 'error'); downloadNext(); return; }
+      fetch(signedUrl)
+        .then(function(res){ return res.blob(); })
+        .then(function(blob){
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = f.name;
+          document.body.appendChild(a); a.click();
+          document.body.removeChild(a);
+          setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+          setTimeout(downloadNext, 500);
+        });
+    });
+  }
+  downloadNext();
 
   // 카운트 업데이트 및 팝업 메시지 수집
-  var willDelete = []; // 0/2 남은 파일
-  var willWarn = [];   // 1/2 남은 파일
+  var willDelete = [];
+  var willWarn = [];
 
   files.forEach(function(f) {
     if (!f.dbId) return;
@@ -1351,7 +1359,7 @@ function uploadFiles(files) {
         done++;
         pb.style.width = Math.round(done/total*100) + '%';
         if (xhr.status >= 200 && xhr.status < 300) {
-          var url = SUPABASE_URL + '/storage/v1/object/public/' + BUCKET + '/' + key;
+          var url = SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + key;
           var now = new Date();
           var dateStr = now.getFullYear() + '-' + ('0'+(now.getMonth()+1)).slice(-2) + '-' + ('0'+now.getDate()).slice(-2);
           var folder = currentFolder === '전체' ? '기타' : currentFolder;
@@ -1378,50 +1386,71 @@ function uploadFiles(files) {
   });
 }
 
+// Signed URL 생성 (60초 유효)
+function getSignedUrl(fileKey, cb) {
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', SUPABASE_URL + '/storage/v1/object/sign/' + BUCKET + '/' + fileKey, true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState !== 4) return;
+    if (xhr.status >= 200 && xhr.status < 300) {
+      var res = JSON.parse(xhr.responseText);
+      cb(null, SUPABASE_URL + res.signedURL);
+    } else {
+      cb(new Error('Signed URL 생성 실패'), null);
+    }
+  };
+  xhr.send(JSON.stringify({ expiresIn: 60 }));
+}
+
 // 다운로드
 function downloadFile(url, name, fileKey, isAdmin) {
-  fetch(url)
-    .then(function(res){ return res.blob(); })
-    .then(function(blob){
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = name;
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a);
-      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+  getSignedUrl(fileKey || url.split('/').pop(), function(err, signedUrl) {
+    if (err) { showToast('다운로드 실패: ' + err.message, 'error'); return; }
+    fetch(signedUrl)
+      .then(function(res){ return res.blob(); })
+      .then(function(blob){
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
 
-      // 관리자 다운로드는 카운트 제외
-      if (isAdmin || !fileKey) return;
+        // 관리자 다운로드는 카운트 제외
+        if (isAdmin || !fileKey) return;
 
-      // 다운로드 횟수 증가 (남은 횟수 차감)
-      var f = fileList.find(function(x){ return x.key === fileKey; });
-      if (!f || !f.dbId) return;
-      var newDownloadCount = (f.downloadCount || 0) + 1;
-      var newRemain = Math.max(0, 2 - newDownloadCount);
-      f.downloadCount = newDownloadCount;
-      f.remainCount = newRemain;
-      renderFileList(); // 즉시 현행화
+        // 다운로드 횟수 증가 (남은 횟수 차감)
+        var f = fileList.find(function(x){ return x.key === fileKey; });
+        if (!f || !f.dbId) return;
+        var newDownloadCount = (f.downloadCount || 0) + 1;
+        var newRemain = Math.max(0, 2 - newDownloadCount);
+        f.downloadCount = newDownloadCount;
+        f.remainCount = newRemain;
+        renderFileList();
 
-      var xhr = new XMLHttpRequest();
-      xhr.open('PATCH', SUPABASE_URL + '/rest/v1/user_files?id=eq.' + f.dbId, true);
-      xhr.setRequestHeader('apikey', SUPABASE_KEY);
-      xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.setRequestHeader('Prefer', 'return=minimal');
-      xhr.send(JSON.stringify({ download_count: newDownloadCount }));
+        var xhr = new XMLHttpRequest();
+        xhr.open('PATCH', SUPABASE_URL + '/rest/v1/user_files?id=eq.' + f.dbId, true);
+        xhr.setRequestHeader('apikey', SUPABASE_KEY);
+        xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Prefer', 'return=minimal');
+        xhr.send(JSON.stringify({ download_count: newDownloadCount }));
 
-      // PATCH 응답 기다리지 않고 바로 팝업 표시
-      setTimeout(function() {
-        if (newRemain <= 0) {
-          showAutoDeleteModal(f.name, '자동 삭제됩니다.', function() {
-            deleteFile(fileKey, true);
-          });
-        } else {
-          showAutoDeleteModal(f.name, '다음번 추가 다운로드 시 자동 삭제됩니다.', null);
-        }
-      }, 300);
-    })
-    .catch(function(){ window.open(url, '_blank'); });
+        setTimeout(function() {
+          if (newRemain <= 0) {
+            showAutoDeleteModal(f.name, '자동 삭제됩니다.', function() {
+              deleteFile(fileKey, true);
+            });
+          } else {
+            showAutoDeleteModal(f.name, '다음번 추가 다운로드 시 자동 삭제됩니다.', null);
+          }
+        }, 300);
+      })
+      .catch(function(){ showToast('다운로드 실패', 'error'); });
+  });
 }
 
 // 삭제
