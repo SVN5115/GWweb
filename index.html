@@ -962,12 +962,8 @@ function downloadSelected() {
   function next() {
     if (i >= files.length) { clearSelection(); showToast(files.length + '개 다운로드 완료', 'success'); return; }
     var f = files[i++];
-    fetch(f.url).then(function(res){ return res.blob(); }).then(function(blob){
-      var a = document.createElement('a');
-      a.href = URL.createObjectURL(blob); a.download = f.name;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      setTimeout(function(){ URL.revokeObjectURL(a.href); next(); }, 300);
-    }).catch(function(){ next(); });
+    downloadFile(f.url, f.name, f.key);
+    setTimeout(next, 500);
   }
   next();
 }
@@ -1100,6 +1096,7 @@ function renderFileList() {
         '<span>' + fmtSize(f.size) + '</span>' +
         '<span>' + f.date + '</span>' +
         (f.folder !== '기타' ? '<span class="file-folder-badge">' + f.folder + '</span>' : '') +
+        '<span style="color:#f59e0b;">⬇ ' + (f.downloadCount||0) + '/2</span>' +
       '</div>';
 
     var actEl = document.createElement('div'); actEl.className = 'file-actions';
