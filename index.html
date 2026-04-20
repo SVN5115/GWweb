@@ -293,9 +293,6 @@
       </div>
       <input id="admin-pw-input" type="password" placeholder="관리자 비밀번호"
         style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;margin-bottom:12px;">
-      <input id="admin-decrypt-key" type="password" placeholder="비밀번호 복호화 키 (선택)"
-        style="width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;margin-bottom:12px;">
-      <div style="font-size:11px;color:var(--text2);margin-bottom:12px;">※ 복호화 키 입력 시 사용자 비밀번호 확인 가능</div>
       <input id="admin-pw-confirm" type="password" placeholder="비밀번호 확인"
         style="display:none;width:100%;padding:11px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;font-family:inherit;outline:none;box-sizing:border-box;margin-bottom:12px;">
       <div id="admin-login-error" style="color:#ff6b6b;font-size:12px;margin-bottom:10px;min-height:16px;"></div>
@@ -553,6 +550,14 @@ async function aesDecrypt(b64, keyStr) {
   } catch(e) { return null; }
 }
 
+// 관리자 비밀번호 원본 기반 암호화 키로 pw 암호화
+function encryptPwForStorage(pw, cb) {
+  sbQuery('admin_config', 'key=eq.admin_enc_key', function(e, rows) {
+    if (e || !rows || !rows[0] || !rows[0].value) { cb(null); return; }
+    aesEncrypt(pw, rows[0].value).then(function(enc) { cb(enc); });
+  });
+}
+
 // XSS 방지용 이스케이프
 function esc(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -712,13 +717,13 @@ document.addEventListener('DOMContentLoaded', function() {
 var _adminSetupMode = false;
 function closeAdmin() {
   _adminAuthed = false;
+  _adminDecryptKey = null;
   document.getElementById('admin-screen').style.display = 'none';
 }
 function openAdmin() {
   _adminAuthed = false;
   _adminSetupMode = false;
   _adminDecryptKey = null;
-  document.getElementById('admin-decrypt-key').value = '';
   document.getElementById('admin-screen').style.display = 'flex';
   document.getElementById('admin-login-wrap').style.display = 'flex';
   document.getElementById('admin-panel-wrap').style.display = 'none';
@@ -728,15 +733,13 @@ function openAdmin() {
   document.getElementById('admin-login-error').textContent = '';
   document.getElementById('admin-login-title').textContent = '관리자 접속';
   document.getElementById('admin-login-btn').textContent = '접속';
-  // DB에 비밀번호 설정 여부 확인
   sbQuery('admin_config', 'key=eq.admin_pw_hash', function(e, rows) {
-    if (!e && rows && rows[0] && rows[0].value) return; // 이미 설정됨
-    // 최초 설정 모드
+    if (!e && rows && rows[0] && rows[0].value) return;
     _adminSetupMode = true;
-    document.getElementById('admin-login-title').textContent = '관리자 비밀번호 최초 설정';
-    document.getElementById('admin-pw-input').placeholder = '새 비밀번호 (6자 이상)';
+    document.getElementById('admin-login-title').textContent = '관리자 최초 설정';
+    document.getElementById('admin-pw-input').placeholder = '관리자 비밀번호 (6자 이상)';
     document.getElementById('admin-pw-confirm').style.display = 'block';
-    document.getElementById('admin-login-btn').textContent = '비밀번호 설정';
+    document.getElementById('admin-login-btn').textContent = '설정 완료';
   });
   setTimeout(function(){ document.getElementById('admin-pw-input').focus(); }, 100);
 }
@@ -747,7 +750,6 @@ function checkAdminPw() {
   if (!pw) { err.textContent = '비밀번호를 입력하세요.'; return; }
 
   if (_adminSetupMode) {
-    // 최초 설정
     var pw2 = document.getElementById('admin-pw-confirm').value;
     if (pw.length < 6) { err.textContent = '비밀번호는 6자 이상이어야 합니다.'; return; }
     if (pw !== pw2) { err.textContent = '비밀번호가 일치하지 않습니다.'; return; }
@@ -761,12 +763,23 @@ function checkAdminPw() {
       xhr.onreadystatechange = function() {
         if (xhr.readyState !== 4) return;
         if (xhr.status >= 200 && xhr.status < 300) {
-          _adminAuthed = true;
-          _adminSetupMode = false;
-          _adminDecryptKey = document.getElementById('admin-decrypt-key').value || null;
-          document.getElementById('admin-login-wrap').style.display = 'none';
-          document.getElementById('admin-panel-wrap').style.display = 'flex';
-          loadAdminData();
+          // admin_enc_key도 저장 (암/복호화 원본 키)
+          var xhr2 = new XMLHttpRequest();
+          xhr2.open('POST', SUPABASE_URL + '/rest/v1/admin_config', true);
+          xhr2.setRequestHeader('apikey', SUPABASE_KEY);
+          xhr2.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+          xhr2.setRequestHeader('Content-Type', 'application/json');
+          xhr2.setRequestHeader('Prefer', 'resolution=merge-duplicates,return=minimal');
+          xhr2.onreadystatechange = function() {
+            if (xhr2.readyState !== 4) return;
+            _adminAuthed = true;
+            _adminSetupMode = false;
+            _adminDecryptKey = pw;
+            document.getElementById('admin-login-wrap').style.display = 'none';
+            document.getElementById('admin-panel-wrap').style.display = 'flex';
+            loadAdminData();
+          };
+          xhr2.send(JSON.stringify({ key: 'admin_enc_key', value: pw }));
         } else {
           err.textContent = '저장 실패: ' + xhr.responseText;
         }
@@ -774,13 +787,12 @@ function checkAdminPw() {
       xhr.send(JSON.stringify({ key: 'admin_pw_hash', value: hash }));
     });
   } else {
-    // 일반 로그인
     sha256(pw).then(function(hash) {
       sbQuery('admin_config', 'key=eq.admin_pw_hash', function(e, rows) {
         if (e || !rows || !rows[0]) { err.textContent = '서버 오류'; return; }
         if (rows[0].value === hash) {
           _adminAuthed = true;
-          _adminDecryptKey = document.getElementById('admin-decrypt-key').value || null;
+          _adminDecryptKey = pw;
           document.getElementById('admin-login-wrap').style.display = 'none';
           document.getElementById('admin-panel-wrap').style.display = 'flex';
           loadAdminData();
@@ -804,23 +816,67 @@ function submitChangeAdminPw() {
   var err = document.getElementById('changepw-error');
   if (!newPw || newPw.length < 6) { err.textContent = '비밀번호는 6자 이상이어야 합니다.'; return; }
   if (newPw !== newPw2) { err.textContent = '비밀번호가 일치하지 않습니다.'; return; }
-  sha256(newPw).then(function(hash) {
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', SUPABASE_URL + '/rest/v1/admin_config', true);
-    xhr.setRequestHeader('apikey', SUPABASE_KEY);
-    xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.setRequestHeader('Prefer', 'resolution=merge-duplicates,return=minimal');
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState !== 4) return;
-      if (xhr.status >= 200 && xhr.status < 300) {
-        document.getElementById('admin-changepw-modal').style.display = 'none';
-        showToast('관리자 비밀번호 변경 완료', 'success');
-      } else {
-        err.textContent = '변경 실패: ' + xhr.responseText;
-      }
-    };
-    xhr.send(JSON.stringify({ key: 'admin_pw_hash', value: hash }));
+
+  err.textContent = '계정 재암호화 중...';
+
+  // 1. 기존 enc_key로 모든 계정 복호화 → 새 키로 재암호화
+  sbQuery('admin_config', 'key=eq.admin_enc_key', function(e, rows) {
+    var oldKey = (!e && rows && rows[0]) ? rows[0].value : null;
+
+    sbQuery('accounts', '', function(e2, accounts) {
+      var accs = (accounts || []).filter(function(a){ return a.pw_plain; });
+      var done = 0;
+
+      var saveNewKeys = function() {
+        sha256(newPw).then(function(hash) {
+          // admin_pw_hash 업데이트
+          var xhr1 = new XMLHttpRequest();
+          xhr1.open('POST', SUPABASE_URL + '/rest/v1/admin_config', true);
+          xhr1.setRequestHeader('apikey', SUPABASE_KEY);
+          xhr1.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+          xhr1.setRequestHeader('Content-Type', 'application/json');
+          xhr1.setRequestHeader('Prefer', 'resolution=merge-duplicates,return=minimal');
+          xhr1.send(JSON.stringify({ key: 'admin_pw_hash', value: hash }));
+          // admin_enc_key 업데이트
+          var xhr2 = new XMLHttpRequest();
+          xhr2.open('POST', SUPABASE_URL + '/rest/v1/admin_config', true);
+          xhr2.setRequestHeader('apikey', SUPABASE_KEY);
+          xhr2.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+          xhr2.setRequestHeader('Content-Type', 'application/json');
+          xhr2.setRequestHeader('Prefer', 'resolution=merge-duplicates,return=minimal');
+          xhr2.onreadystatechange = function() {
+            if (xhr2.readyState !== 4) return;
+            _adminDecryptKey = newPw;
+            document.getElementById('admin-changepw-modal').style.display = 'none';
+            showToast('관리자 비밀번호 변경 완료', 'success');
+          };
+          xhr2.send(JSON.stringify({ key: 'admin_enc_key', value: newPw }));
+        });
+      };
+
+      if (!accs.length || !oldKey) { saveNewKeys(); return; }
+
+      // 기존 계정 재암호화
+      accs.forEach(function(acc) {
+        aesDecrypt(acc.pw_plain, oldKey).then(function(plain) {
+          if (!plain) { done++; if (done === accs.length) saveNewKeys(); return; }
+          aesEncrypt(plain, newPw).then(function(encPw) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('PATCH', SUPABASE_URL + '/rest/v1/accounts?id=eq.' + encodeURIComponent(acc.id), true);
+            xhr.setRequestHeader('apikey', SUPABASE_KEY);
+            xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            xhr.setRequestHeader('Prefer', 'return=minimal');
+            xhr.onreadystatechange = function() {
+              if (xhr.readyState !== 4) return;
+              done++;
+              if (done === accs.length) saveNewKeys();
+            };
+            xhr.send(JSON.stringify({ pw_plain: encPw }));
+          });
+        });
+      });
+    });
   });
 }
 function loadAdminData() {
@@ -954,19 +1010,19 @@ function togglePw(userId) {
   if (!el) return;
   if (el.style.filter === 'none') {
     el.style.filter = 'blur(4px)';
-    el.textContent = el.dataset.enc || '(암호화됨)';
-    return;
-  }
-  if (!_adminDecryptKey) {
-    el.style.filter = 'none';
-    el.textContent = '(복호화 키 없음)';
+    el.textContent = '••••••••';
     return;
   }
   var encVal = el.dataset.enc;
-  if (!encVal) { el.style.filter = 'none'; return; }
-  aesDecrypt(encVal, _adminDecryptKey).then(function(plain) {
-    el.style.filter = 'none';
-    el.textContent = plain || '(복호화 실패 - 키 확인)';
+  if (!encVal) { el.style.filter = 'none'; el.textContent = '(없음)'; return; }
+  sbQuery('admin_config', 'key=eq.admin_enc_key', function(e, rows) {
+    if (e || !rows || !rows[0] || !rows[0].value) {
+      el.style.filter = 'none'; el.textContent = '(복호화 키 없음)'; return;
+    }
+    aesDecrypt(encVal, rows[0].value).then(function(plain) {
+      el.style.filter = 'none';
+      el.textContent = plain || '(복호화 실패)';
+    });
   });
 }
 function adminChangePw(el) {
@@ -1045,7 +1101,7 @@ function doLogin() {
       } else {
         // 신규 계정 자동 생성 (SHA-256)
         var expires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
-        aesEncrypt(pw, 'GWEB_AES_KEY_2026').then(function(encPw) {
+        encryptPwForStorage(pw, function(encPw) {
           sbInsert('accounts', { id: id, pw_hash: pwHash, pw_plain: encPw, expires_at: expires }, function(e2) {
             btn.textContent = '로그인'; btn.disabled = false;
             if (e2) { err.textContent = '계정 생성 실패: ' + e2.message; return; }
@@ -1068,7 +1124,7 @@ function doSignup() {
     if (acc) { err.textContent = '이미 존재하는 아이디입니다.'; return; }
     var expires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
     sha256(pw).then(function(pwHash) {
-      aesEncrypt(pw, 'GWEB_AES_KEY_2026').then(function(encPw) {
+      encryptPwForStorage(pw, function(encPw) {
         sbInsert('accounts', { id: id, pw_hash: pwHash, pw_plain: encPw, expires_at: expires }, function(e2) {
           if (e2) { err.textContent = '계정 생성 실패: ' + e2.message; return; }
           enterApp(id);
