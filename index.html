@@ -276,8 +276,43 @@
 
   /* 반응형 */
   @media (max-width: 600px) {
+    /* 헤더 */
+    .header { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+    .header-logo { font-size: 15px; }
+    .header-info { font-size: 11px; }
+
+    /* 메인 */
+    .main { padding: 12px 10px; }
+
+    /* 업로드 존 */
+    .upload-zone { padding: 24px 12px; margin-bottom: 14px; }
+    .upload-icon { font-size: 32px; margin-bottom: 8px; }
+    .upload-title { font-size: 14px; }
+    .upload-sub { font-size: 11px; margin-bottom: 12px; }
+    .upload-btn { padding: 8px 20px; font-size: 13px; }
+
+    /* 일괄선택 바 */
+    .bulk-bar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
+    .bulk-bar button { font-size: 11px; padding: 5px 8px; }
+    #bulk-count { font-size: 11px; min-width: 60px; }
+
+    /* 툴바 */
+    .toolbar { gap: 6px; flex-wrap: wrap; }
+    .folder-tabs { gap: 4px; }
+    .folder-tab { padding: 5px 10px; font-size: 11px; }
+    .add-folder-btn { padding: 5px 10px; font-size: 11px; }
+    .search-wrap { width: 100%; }
+    .search-input { width: 100%; box-sizing: border-box; }
+
+    /* 파일 목록 */
+    .file-item { padding: 10px 10px; gap: 8px; }
+    .file-img-thumb { width: 40px; height: 40px; }
+    .file-icon { font-size: 22px; width: 28px; }
+    .file-name { font-size: 13px; }
+    .file-meta { font-size: 10px; gap: 6px; }
+    .file-actions { gap: 4px; }
+    .file-btn { padding: 5px 8px; font-size: 11px; }
     .file-btn span { display: none; }
-    .search-input { width: 130px; }
   }
 </style>
 </head>
@@ -441,15 +476,15 @@
 </div>
 
 <div id="app-wrap" style="display:none;"><div class="header">
-  <div class="header-logo" id="header-logo" style="cursor:default;user-select:none;">📦 파일 보관함</div>
-  <div style="display:flex;align-items:center;gap:12px;">
-  <div class="header-info" id="storage-info">로딩 중...</div>
-  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-    <span id="login-user-label" style="font-size:12px;color:var(--text2);"></span>
-    <span id="expire-countdown" style="font-size:10px;color:#f59e0b;"></span>
+  <div class="header-logo" id="header-logo" style="cursor:default;user-select:none;">📦 파일 보관</div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+    <div class="header-info" id="storage-info">로딩 중...</div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px;">
+      <span id="login-user-label" style="font-size:12px;color:var(--text2);"></span>
+      <span id="expire-countdown" style="font-size:10px;color:#f59e0b;white-space:nowrap;"></span>
+    </div>
+    <button onclick="doLogout()" style="background:none;border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit;white-space:nowrap;">로그아웃</button>
   </div>
-  <button onclick="doLogout()" style="background:none;border:1px solid var(--border);color:var(--text2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit;">로그아웃</button>
-</div>
 </div>
 
 <div class="main">
@@ -481,10 +516,12 @@
   <!-- 툴바 -->
   <div class="toolbar">
     <div class="folder-tabs" id="folder-tabs"></div>
-    <button class="add-folder-btn" onclick="openAddFolder()">+ 폴더 추가</button>
-    <button class="add-folder-btn" onclick="deleteCurrentFolder()" id="del-folder-btn" style="display:none;border-color:#ff6b6b;color:#ff6b6b;">- 폴더 삭제</button>
-    <button class="add-folder-btn" onclick="toggleSelectAll()" id="select-all-btn">☐ 전체선택</button>
-    <button class="add-folder-btn" onclick="deleteAllFiles()" style="border-color:#ff6b6b;color:#ff6b6b;">🗑 전체삭제</button>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+      <button class="add-folder-btn" onclick="openAddFolder()">+ 폴더 추가</button>
+      <button class="add-folder-btn" onclick="deleteCurrentFolder()" id="del-folder-btn" style="display:none;border-color:#ff6b6b;color:#ff6b6b;">- 폴더 삭제</button>
+      <button class="add-folder-btn" onclick="toggleSelectAll()" id="select-all-btn">☐ 전체선택</button>
+      <button class="add-folder-btn" onclick="deleteAllFiles()" style="border-color:#ff6b6b;color:#ff6b6b;">🗑 전체삭제</button>
+    </div>
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
       <input class="search-input" type="text" id="search-input" placeholder="파일 검색..." oninput="renderFileList()">
