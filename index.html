@@ -443,7 +443,10 @@
   <div class="header-logo" id="header-logo" style="cursor:default;user-select:none;">📦 파일 보관함</div>
   <div style="display:flex;align-items:center;gap:12px;">
   <div class="header-info" id="storage-info">로딩 중...</div>
-  <span id="login-user-label" style="font-size:12px;color:var(--text2);"></span>
+  <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+    <span id="login-user-label" style="font-size:12px;color:var(--text2);"></span>
+    <span id="expire-countdown" style="font-size:10px;color:#f59e0b;"></span>
+  </div>
   <button onclick="doLogout()" style="background:none;border:1px solid var(--border);color:var(--text2);padding:5px 12px;border-radius:6px;font-size:12px;cursor:pointer;font-family:inherit;">로그아웃</button>
 </div>
 </div>
@@ -480,6 +483,7 @@
     <button class="add-folder-btn" onclick="openAddFolder()">+ 폴더 추가</button>
     <button class="add-folder-btn" onclick="deleteCurrentFolder()" id="del-folder-btn" style="display:none;border-color:#ff6b6b;color:#ff6b6b;">- 폴더 삭제</button>
     <button class="add-folder-btn" onclick="toggleSelectAll()" id="select-all-btn">☐ 전체선택</button>
+    <button class="add-folder-btn" onclick="deleteAllFiles()" style="border-color:#ff6b6b;color:#ff6b6b;">🗑 전체삭제</button>
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
       <input class="search-input" type="text" id="search-input" placeholder="파일 검색..." oninput="renderFileList()">
@@ -681,7 +685,33 @@ function enterApp(userId) {
   document.getElementById('signup-screen').style.display = 'none';
   document.getElementById('app-wrap').style.display = 'block';
   document.getElementById('login-user-label').textContent = '👤 ' + userId;
+  startExpireCountdown(new Date(newExpires));
   loadUserData();
+}
+
+var _countdownTimer = null;
+function startExpireCountdown(expDate) {
+  if (_countdownTimer) clearInterval(_countdownTimer);
+  function update() {
+    var el = document.getElementById('expire-countdown');
+    if (!el) return;
+    var diff = expDate - new Date();
+    if (diff <= 0) { el.textContent = '⚠️ 만료됨'; return; }
+    var h = Math.floor(diff / (1000*60*60));
+    var m = Math.floor((diff % (1000*60*60)) / (1000*60));
+    var s = Math.floor((diff % (1000*60)) / 1000);
+    el.textContent = '🕐 삭제까지 ' + h + 'h ' + m + 'm ' + s + 's';
+  }
+  update();
+  _countdownTimer = setInterval(update, 1000);
+}
+
+function deleteAllFiles() {
+  var visibleKeys = getCurrentVisibleKeys();
+  if (!visibleKeys.length) { showToast('삭제할 파일이 없습니다', 'error'); return; }
+  if (!confirm('현재 폴더의 파일 ' + visibleKeys.length + '개를 모두 삭제하시겠습니까?')) return;
+  visibleKeys.forEach(function(key) { deleteFile(key, true); });
+  showToast(visibleKeys.length + '개 파일 삭제 완료', 'success');
 }
 function loadUserData() {
   // 폴더 로드
@@ -704,6 +734,8 @@ function loadUserData() {
 }
 function doLogout() {
   currentUser = null;
+  if (_countdownTimer) { clearInterval(_countdownTimer); _countdownTimer = null; }
+  document.getElementById('expire-countdown').textContent = '';
   sessionStorage.removeItem('file_user');
   sessionStorage.removeItem('file_user_exp');
   showLogin();
@@ -1225,7 +1257,7 @@ document.addEventListener('DOMContentLoaded', function() {
   var savedExp = parseInt(sessionStorage.getItem('file_user_exp')||'0');
   if (saved && savedExp > Date.now()) {
     sbGet('accounts', saved, function(e, acc) {
-      if (acc && new Date(acc.expires_at) > new Date()) { enterApp(saved); }
+      if (acc && new Date(acc.expires_at) > new Date()) { enterApp(saved); startExpireCountdown(new Date(acc.expires_at)); }
       else { sessionStorage.removeItem('file_user'); sessionStorage.removeItem('file_user_exp'); showLogin(); }
     });
   } else {
