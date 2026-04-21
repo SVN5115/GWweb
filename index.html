@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <script>if(location.protocol==='http:'&&location.hostname!=='localhost'&&location.hostname!=='127.0.0.1'){location.replace('https://'+location.href.slice(7));}</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>파일 보관함</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -1310,29 +1311,60 @@ function downloadSelected() {
   if (!keys.length) return;
   var files = fileList.filter(function(f){ return selectedKeys[f.key]; });
 
-  // fetchWithAuth로 순차 다운로드
-  var idx = 0;
-  function downloadNext() {
-    if (idx >= files.length) return;
-    var f = files[idx++];
+  // 단일 파일은 그냥 다운로드
+  if (files.length === 1) {
+    var f = files[0];
     fetchWithAuth(f.key, f.name, function(err) {
-      if (err) { showToast(f.name + ' 다운로드 실패', 'error'); }
-      setTimeout(downloadNext, 500);
+      if (err) { showToast(f.name + ' 다운로드 실패', 'error'); return; }
+      updateDownloadCount([f]);
     });
+    clearSelection();
+    return;
   }
-  downloadNext();
 
-  // 카운트 업데이트 및 팝업 메시지 수집
+  // 다중 파일은 ZIP으로 묶어서 다운로드
+  showToast('ZIP 압축 중...', '');
+  var zip = new JSZip();
+  var done = 0;
+
+  files.forEach(function(f) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + f.key, true);
+    xhr.setRequestHeader('apikey', SUPABASE_KEY);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+    xhr.responseType = 'arraybuffer';
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== 4) return;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        zip.file(f.name, xhr.response);
+      }
+      done++;
+      if (done === files.length) {
+        zip.generateAsync({ type: 'blob' }).then(function(blob) {
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = '파일보관함_' + new Date().toISOString().slice(0,10) + '.zip';
+          document.body.appendChild(a); a.click();
+          document.body.removeChild(a);
+          setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+          updateDownloadCount(files);
+          clearSelection();
+        });
+      }
+    };
+    xhr.send();
+  });
+}
+
+function updateDownloadCount(files) {
   var willDelete = [];
   var willWarn = [];
-
   files.forEach(function(f) {
     if (!f.dbId) return;
     var newCount = (f.downloadCount || 0) + 1;
     var newRemain = Math.max(0, 2 - newCount);
     f.downloadCount = newCount;
     f.remainCount = newRemain;
-
     var xhr = new XMLHttpRequest();
     xhr.open('PATCH', SUPABASE_URL + '/rest/v1/user_files?id=eq.' + f.dbId, true);
     xhr.setRequestHeader('apikey', SUPABASE_KEY);
@@ -1340,41 +1372,24 @@ function downloadSelected() {
     xhr.setRequestHeader('Content-Type', 'application/json');
     xhr.setRequestHeader('Prefer', 'return=minimal');
     xhr.send(JSON.stringify({ download_count: newCount }));
-
     if (newRemain <= 0) willDelete.push(f);
     else willWarn.push(f);
   });
-
   renderFileList();
-  clearSelection();
-
-  // 팝업 한 번에 표시
   setTimeout(function() {
     var allNames = files.map(function(f){ return '• ' + f.name; }).join('\n');
     if (willDelete.length > 0 && willWarn.length === 0) {
-      // 전부 삭제 대상
-      showAutoDeleteModal(
-        files.length + '개 파일',
-        allNames + '\n\n자동 삭제됩니다.',
-        function() { willDelete.forEach(function(f){ deleteFile(f.key, true); }); }
-      );
+      showAutoDeleteModal(files.length + '개 파일', allNames + '\n\n자동 삭제됩니다.',
+        function() { willDelete.forEach(function(f){ deleteFile(f.key, true); }); });
     } else if (willDelete.length > 0) {
-      // 일부 삭제, 일부 경고
       var delNames = willDelete.map(function(f){ return '• ' + f.name; }).join('\n');
       var warnNames = willWarn.map(function(f){ return '• ' + f.name; }).join('\n');
-      showAutoDeleteModal(
-        files.length + '개 파일 다운로드',
+      showAutoDeleteModal(files.length + '개 파일 다운로드',
         (willDelete.length ? '[삭제 예정]\n' + delNames + '\n\n' : '') +
         (willWarn.length ? '[다음 다운로드 시 삭제]\n' + warnNames : ''),
-        function() { willDelete.forEach(function(f){ deleteFile(f.key, true); }); }
-      );
+        function() { willDelete.forEach(function(f){ deleteFile(f.key, true); }); });
     } else if (willWarn.length > 0) {
-      // 전부 경고만
-      showAutoDeleteModal(
-        files.length + '개 파일',
-        allNames + '\n\n다음번 추가 다운로드 시 자동 삭제됩니다.',
-        null
-      );
+      showAutoDeleteModal(files.length + '개 파일', allNames + '\n\n다음번 추가 다운로드 시 자동 삭제됩니다.', null);
     }
   }, 400);
 }
@@ -1622,6 +1637,7 @@ function uploadFiles(files) {
           setTimeout(function(){ pw.classList.remove('visible'); pb.style.width = '0%'; }, 800);
           renderFileList();
           updateStorageInfo();
+          updateBulkBar();
         }
       };
       xhr.send(uploadFile);
@@ -1719,7 +1735,8 @@ function deleteFile(key, silent) {
   // DB 삭제
   if (f && f.dbId) sbDeleteRow('user_files', 'id=eq.' + f.dbId);
   fileList = fileList.filter(function(x){ return x.key !== key; });
-  renderFileList(); updateStorageInfo();
+  delete selectedKeys[key];
+  renderFileList(); updateStorageInfo(); updateBulkBar();
   showToast(silent ? '2회 다운로드로 파일이 자동 삭제되었습니다' : '삭제되었습니다');
 }
 
@@ -1741,7 +1758,7 @@ function moveFile(key) {
           sbUpsert('user_files', { id: fi.dbId, user_id: currentUser, key: fi.key, name: fi.name, size: fi.size, url: fi.url, folder: f });
         });
       }
-      renderFileList();
+      renderFileList(); renderFolders(); updateBulkBar();
       document.getElementById('move-modal').classList.remove('visible');
       showToast(f + ' 폴더로 이동했습니다', 'success');
     };
@@ -1782,7 +1799,7 @@ function deleteCurrentFolder() {
   });
   folders = folders.filter(function(f){ return f !== currentFolder; });
   currentFolder = '전체';
-  saveFolders(); renderFolders(); renderFileList();
+  saveFolders(); renderFolders(); renderFileList(); updateBulkBar();
   showToast('폴더 삭제 완료', 'success');
 }
 
