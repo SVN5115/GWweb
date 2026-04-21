@@ -401,7 +401,7 @@
       로그인
     </button>
     <div style="text-align:center;margin-top:16px;">
-      <div style="font-size:12px;color:var(--text2);">처음 입력한 아이디/비밀번호로 자동 계정 생성<br>미접속 5일 후 자동 삭제됩니다</div>
+      <div style="font-size:12px;color:var(--text2);">처음 입력한 아이디/비밀번호로 자동 계정 생성<br>미접속 1일 후 자동 삭제됩니다</div>
     </div>
   </div>
 </div>
@@ -411,7 +411,7 @@
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:360px;max-width:92vw;">
     <div style="text-align:center;margin-bottom:24px;">
       <div style="font-size:20px;font-weight:700;color:var(--accent);">계정 생성</div>
-      <div style="font-size:12px;color:var(--text2);margin-top:6px;">미접속 5일 후 자동 삭제됩니다</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:6px;">미접속 1일 후 자동 삭제됩니다</div>
     </div>
     <div style="margin-bottom:12px;">
       <input id="signup-id" type="text" placeholder="아이디 (4자 이상)" autocomplete="off"
@@ -668,8 +668,8 @@ function enterApp(userId) {
   currentUser = userId;
   sessionStorage.setItem('file_user', userId);
   sessionStorage.setItem('file_user_exp', Date.now() + 60*60*1000); // 1시간
-  // 접속 시 last_login, expires_at 갱신 (미접속 5일 후 삭제)
-  var newExpires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
+  // 접속 시 last_login, expires_at 갱신 (미접속 1일 후 삭제)
+  var newExpires = new Date(Date.now() + 1*24*60*60*1000).toISOString();
   var xhr = new XMLHttpRequest();
   xhr.open('PATCH', SUPABASE_URL + '/rest/v1/accounts?id=eq.' + encodeURIComponent(userId), true);
   xhr.setRequestHeader('apikey', SUPABASE_KEY);
@@ -924,7 +924,16 @@ function loadAdminData() {
       accounts.forEach(function(acc) {
         var exp = new Date(acc.expires_at);
         var isExpired = exp < new Date();
-        var daysLeft = Math.ceil((exp - new Date()) / (1000*60*60*24));
+        var diffMs = exp - new Date();
+        var daysLeft = Math.floor(diffMs / (1000*60*60*24));
+        var hoursLeft = Math.floor((diffMs % (1000*60*60*24)) / (1000*60*60));
+        var minsLeft = Math.floor((diffMs % (1000*60*60)) / (1000*60));
+        var expStr = exp.toLocaleDateString('ko-KR') + ' ' + exp.toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit'});
+        var remainStr = daysLeft > 0
+          ? daysLeft + '일 ' + hoursLeft + '시간 남음'
+          : hoursLeft > 0
+            ? hoursLeft + '시간 ' + minsLeft + '분 남음'
+            : minsLeft + '분 남음';
         var lastLogin = acc.last_login ? new Date(acc.last_login).toLocaleDateString('ko-KR') : '없음';
         var userFiles = filesByUser[acc.id] || [];
         var fileCount = userFiles.length;
@@ -941,8 +950,8 @@ function loadAdminData() {
             '<div style="font-size:13px;font-weight:500;">' + esc(acc.id) + '</div>' +
             '<div style="font-size:11px;color:var(--text2);margin-top:2px;">' +
               '파일 ' + fileCount + '개 · ' + fmtSize(fileSizeMap[acc.id]||0) +
-              ' · 마지막 접속: ' + esc(lastLogin) + ' · 만료: ' + esc(exp.toLocaleDateString('ko-KR')) +
-              (isExpired ? ' <span style="color:#ff6b6b;">만료됨</span>' : ' <span style="color:var(--accent2);">(' + daysLeft + '일 남음)</span>') +
+              ' · 마지막 접속: ' + esc(lastLogin) + ' · 만료: ' + esc(expStr) +
+              (isExpired ? ' <span style="color:#ff6b6b;">만료됨</span>' : ' <span style="color:var(--accent2);">(' + esc(remainStr) + ')</span>') +
             '</div>' +
           '</div>' +
           '<button onclick="adminChangePw(this)" data-uid="' + esc(acc.id) + '" style="background:none;border:1px solid var(--accent);color:var(--accent);padding:5px 12px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;flex-shrink:0;">암호변경</button>' +
@@ -1171,7 +1180,7 @@ function doLogin() {
         }
       } else {
         // 신규 계정 자동 생성 (SHA-256)
-        var expires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
+        var expires = new Date(Date.now() + 1*24*60*60*1000).toISOString();
         encryptPwForStorage(pw, function(encPw) {
           sbInsert('accounts', { id: id, pw_hash: pwHash, pw_plain: encPw, expires_at: expires }, function(e2) {
             btn.textContent = '로그인'; btn.disabled = false;
@@ -1193,7 +1202,7 @@ function doSignup() {
   if (pw !== pw2) { err.textContent = '비밀번호가 일치하지 않습니다.'; return; }
   sbGet('accounts', id, function(e, acc) {
     if (acc) { err.textContent = '이미 존재하는 아이디입니다.'; return; }
-    var expires = new Date(Date.now() + 5*24*60*60*1000).toISOString();
+    var expires = new Date(Date.now() + 1*24*60*60*1000).toISOString();
     sha256(pw).then(function(pwHash) {
       encryptPwForStorage(pw, function(encPw) {
         sbInsert('accounts', { id: id, pw_hash: pwHash, pw_plain: encPw, expires_at: expires }, function(e2) {
