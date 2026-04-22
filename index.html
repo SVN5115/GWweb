@@ -1721,6 +1721,9 @@ function fetchWithAuth(fileKey, name, cb) {
     if (xhr.readyState !== 4) return;
     if (xhr.status >= 200 && xhr.status < 300) {
       var blob = xhr.response;
+      // txt 파일은 UTF-8 명시
+      var ext = (name.split('.').pop()||'').toLowerCase();
+      if (ext === 'txt') blob = new Blob([xhr.response], { type: 'text/plain;charset=utf-8' });
       var blobUrl = URL.createObjectURL(blob);
       if (_isSafari) {
         // Safari: 새 탭으로 blob URL 열기 (다운로드 가능)
