@@ -353,7 +353,7 @@
     </div>
     <div style="flex:1;overflow-y:auto;padding:24px;max-width:900px;margin:0 auto;width:100%;">
       <!-- 통계 -->
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px;">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:12px;">
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;">
           <div style="font-size:24px;font-weight:700;color:var(--accent);" id="admin-stat-users">-</div>
           <div style="font-size:12px;color:var(--text2);margin-top:4px;">전체 계정</div>
@@ -365,6 +365,16 @@
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;">
           <div style="font-size:24px;font-weight:700;color:#f59e0b;" id="admin-stat-size">-</div>
           <div style="font-size:12px;color:var(--text2);margin-top:4px;">총 용량</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:24px;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;">
+          <div style="font-size:24px;font-weight:700;color:#a78bfa;" id="admin-stat-today">-</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;">일일 접속자 수 <span style="font-size:10px;">(오늘)</span></div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center;">
+          <div style="font-size:24px;font-weight:700;color:#34d399;" id="admin-stat-total">-</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:4px;">누계 접속자 수</div>
         </div>
       </div>
       <!-- 계정 목록 -->
@@ -413,6 +423,7 @@
 <div id="login-screen" style="display:none;position:fixed;inset:0;background:var(--bg);z-index:9999;display:flex;align-items:center;justify-content:center;">
   <!-- 숨김 관리자 트리거 -->
   <div id="login-logo-trigger" style="position:absolute;top:0;left:0;width:60px;height:40px;cursor:default;"></div>
+  <div id="login-bottom-trigger" style="position:absolute;bottom:0;left:0;width:60px;height:40px;cursor:default;"></div>
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:360px;max-width:92vw;">
     <div style="text-align:center;margin-bottom:28px;">
       <div style="font-size:36px;margin-bottom:8px;">📦</div>
@@ -710,8 +721,7 @@ function showSignup() {
 function enterApp(userId) {
   currentUser = userId;
   sessionStorage.setItem('file_user', userId);
-  sessionStorage.setItem('file_user_exp', Date.now() + 60*60*1000); // 1시간
-  // 접속 시 last_login, expires_at 갱신 (미접속 1일 후 삭제)
+  sessionStorage.setItem('file_user_exp', Date.now() + 60*60*1000);
   var newExpires = new Date(Date.now() + 1*24*60*60*1000).toISOString();
   var xhr = new XMLHttpRequest();
   xhr.open('PATCH', SUPABASE_URL + '/rest/v1/accounts?id=eq.' + encodeURIComponent(userId), true);
@@ -720,6 +730,14 @@ function enterApp(userId) {
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.setRequestHeader('Prefer', 'return=minimal');
   xhr.send(JSON.stringify({ last_login: new Date().toISOString(), expires_at: newExpires }));
+  // 접속 로그 기록
+  var logXhr = new XMLHttpRequest();
+  logXhr.open('POST', SUPABASE_URL + '/rest/v1/access_logs', true);
+  logXhr.setRequestHeader('apikey', SUPABASE_KEY);
+  logXhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  logXhr.setRequestHeader('Content-Type', 'application/json');
+  logXhr.setRequestHeader('Prefer', 'return=minimal');
+  logXhr.send(JSON.stringify({ user_id: userId }));
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('signup-screen').style.display = 'none';
   document.getElementById('app-wrap').style.display = 'block';
@@ -781,27 +799,53 @@ function doLogout() {
 }
 
 // 관리자
-var _logoClickCount = 0;
-var _logoClickTimer = null;
+var _adminClickStep = 0; // 0: 좌상단 대기, 1: 좌상단 4번완료(좌하단 대기)
+var _adminClickCount = 0;
+var _adminClickTimer = null;
 var _adminAuthed = false;
 
-// 로그인 화면 상단에 숨김 트리거 영역 (로고 대신)
 document.addEventListener('DOMContentLoaded', function() {
-  // 로그인 화면에서도 작동하도록 document 레벨로 처리
+  // 좌측하단 트리거 (앱 화면용)
+  var bottomTrigger = document.createElement('div');
+  bottomTrigger.id = 'app-bottom-trigger';
+  bottomTrigger.style.cssText = 'position:fixed;bottom:0;left:0;width:60px;height:40px;cursor:default;z-index:50;';
+  document.body.appendChild(bottomTrigger);
+
   var logo = document.getElementById('header-logo');
   var loginLogo = document.getElementById('login-logo-trigger');
-  function handleLogoClick() {
-    _logoClickCount++;
-    clearTimeout(_logoClickTimer);
-    if (_logoClickCount >= 4) {
-      _logoClickCount = 0;
-      openAdmin();
+  var loginBottom = document.getElementById('login-bottom-trigger');
+  var appBottom = document.getElementById('app-bottom-trigger');
+
+  function handleTopClick() {
+    if (_adminClickStep !== 0) return;
+    _adminClickCount++;
+    clearTimeout(_adminClickTimer);
+    if (_adminClickCount >= 4) {
+      _adminClickCount = 0;
+      _adminClickStep = 1; // 좌하단 대기
+      _adminClickTimer = setTimeout(function(){ _adminClickStep = 0; _adminClickCount = 0; }, 4000);
     } else {
-      _logoClickTimer = setTimeout(function(){ _logoClickCount = 0; }, 4000);
+      _adminClickTimer = setTimeout(function(){ _adminClickCount = 0; }, 4000);
     }
   }
-  if (logo) logo.addEventListener('click', handleLogoClick);
-  if (loginLogo) loginLogo.addEventListener('click', handleLogoClick);
+
+  function handleBottomClick() {
+    if (_adminClickStep !== 1) return;
+    _adminClickCount++;
+    clearTimeout(_adminClickTimer);
+    if (_adminClickCount >= 4) {
+      _adminClickCount = 0;
+      _adminClickStep = 0;
+      openAdmin();
+    } else {
+      _adminClickTimer = setTimeout(function(){ _adminClickStep = 0; _adminClickCount = 0; }, 4000);
+    }
+  }
+
+  if (logo) logo.addEventListener('click', handleTopClick);
+  if (loginLogo) loginLogo.addEventListener('click', handleTopClick);
+  if (loginBottom) loginBottom.addEventListener('click', handleBottomClick);
+  if (appBottom) appBottom.addEventListener('click', handleBottomClick);
 });
 
 var _adminSetupMode = false;
@@ -970,6 +1014,14 @@ function submitChangeAdminPw() {
   });
 }
 function loadAdminData() {
+  // 접속자 통계
+  var today = new Date(); today.setHours(0,0,0,0);
+  sbQuery('access_logs', 'accessed_at=gte.' + today.toISOString(), function(e, todayLogs) {
+    document.getElementById('admin-stat-today').textContent = todayLogs ? todayLogs.length : 0;
+  });
+  sbQuery('access_logs', '', function(e, allLogs) {
+    document.getElementById('admin-stat-total').textContent = allLogs ? allLogs.length : 0;
+  });
   sbQuery('accounts', '', function(e, accounts) {
     document.getElementById('admin-stat-users').textContent = accounts ? accounts.length : 0;
     sbQuery('user_files', 'order=uploaded_at.desc', function(e2, files) {
@@ -992,6 +1044,7 @@ function loadAdminData() {
         el.innerHTML = '<div style="padding:16px 18px;color:var(--text2);font-size:13px;">계정이 없습니다</div>';
         return;
       }
+      accounts.sort(function(a, b){ return new Date(a.expires_at) - new Date(b.expires_at); });
       accounts.forEach(function(acc) {
         var exp = new Date(acc.expires_at);
         var isExpired = exp < new Date();
@@ -1726,14 +1779,10 @@ function fetchWithAuth(fileKey, name, cb) {
       if (ext === 'txt') blob = new Blob([xhr.response], { type: 'text/plain;charset=utf-8' });
       var blobUrl = URL.createObjectURL(blob);
       if (_isSafari) {
-        // Safari: 새 탭으로 blob URL 열기 (다운로드 가능)
-        var a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = name;
-        a.target = '_blank';
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a);
-        setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 3000);
+        // Safari: 새 탭으로 열기 → 공유 버튼으로 저장 안내
+        window.open(blobUrl, '_blank');
+        showToast('📥 열린 파일을 공유(□↑) → 파일에 저장 하세요', 'success');
+        setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 30000);
       } else {
         var a = document.createElement('a');
         a.href = blobUrl;
