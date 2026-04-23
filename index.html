@@ -745,10 +745,26 @@ function enterApp(userId) {
   document.getElementById('app-wrap').style.display = 'block';
   document.getElementById('login-user-label').textContent = '👤 ' + userId;
   startExpireCountdown(new Date(newExpires));
+  if (_refreshTimer) clearInterval(_refreshTimer);
+  _refreshTimer = setInterval(refreshExpiry, 30 * 60 * 1000); // 30분마다 갱신
   loadUserData();
 }
 
 var _countdownTimer = null;
+var _refreshTimer = null;
+
+function refreshExpiry() {
+  if (!currentUser) return;
+  var newExpires = new Date(Date.now() + 1*24*60*60*1000).toISOString();
+  var xhr = new XMLHttpRequest();
+  xhr.open('PATCH', SUPABASE_URL + '/rest/v1/accounts?id=eq.' + encodeURIComponent(currentUser), true);
+  xhr.setRequestHeader('apikey', SUPABASE_KEY);
+  xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('Prefer', 'return=minimal');
+  xhr.send(JSON.stringify({ expires_at: newExpires }));
+  startExpireCountdown(new Date(newExpires));
+}
 function startExpireCountdown(expDate) {
   if (_countdownTimer) clearInterval(_countdownTimer);
   function update() {
@@ -1441,10 +1457,9 @@ function downloadSelected() {
           var a = document.createElement('a');
           a.href = blobUrl;
           a.download = '파일보관함_' + new Date().toISOString().slice(0,10) + '.zip';
-          if (_isSafari) a.target = '_blank';
           document.body.appendChild(a); a.click();
           document.body.removeChild(a);
-          setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 3000);
+          setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 1000);
           updateDownloadCount(files);
           clearSelection();
         });
@@ -1783,19 +1798,12 @@ function fetchWithAuth(fileKey, name, cb) {
       var ext = (name.split('.').pop()||'').toLowerCase();
       if (ext === 'txt') blob = new Blob([xhr.response], { type: 'text/plain;charset=utf-8' });
       var blobUrl = URL.createObjectURL(blob);
-      if (_isSafari) {
-        // Safari: 새 탭으로 열기 → 공유 버튼으로 저장 안내
-        window.open(blobUrl, '_blank');
-        showToast('📥 열린 파일을 공유(□↑) → 파일에 저장 하세요', 'success');
-        setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 30000);
-      } else {
-        var a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = name;
-        document.body.appendChild(a); a.click();
-        document.body.removeChild(a);
-        setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 1000);
-      }
+      var a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = name;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 1000);
       cb(null);
     } else {
       cb(new Error('다운로드 실패 (' + xhr.status + ')'));
