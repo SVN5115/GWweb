@@ -1015,8 +1015,11 @@ function submitChangeAdminPw() {
 }
 function loadAdminData() {
   // 접속자 통계
-  var today = new Date(); today.setHours(0,0,0,0);
-  sbQuery('access_logs', 'accessed_at=gte.' + today.toISOString(), function(e, todayLogs) {
+  // 한국 시간(UTC+9) 기준 오늘 00:00
+  var now = new Date();
+  var kstOffset = 9 * 60 * 60 * 1000;
+  var todayKST = new Date(Math.floor((now.getTime() + kstOffset) / 86400000) * 86400000 - kstOffset);
+  sbQuery('access_logs', 'accessed_at=gte.' + todayKST.toISOString(), function(e, todayLogs) {
     document.getElementById('admin-stat-today').textContent = todayLogs ? todayLogs.length : 0;
   });
   sbQuery('access_logs', '', function(e, allLogs) {
