@@ -1012,11 +1012,28 @@ function loadAdminData() {
   var now = new Date();
   var kstOffset = 9 * 60 * 60 * 1000;
   var todayKST = new Date(Math.floor((now.getTime() + kstOffset) / 86400000) * 86400000 - kstOffset);
-  sbQuery('access_logs', 'accessed_at=gte.' + todayKST.toISOString(), function(e, todayLogs) {
-    document.getElementById('admin-stat-today').textContent = todayLogs ? todayLogs.length : 0;
+
+  function getCount(filter, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', SUPABASE_URL + '/rest/v1/access_logs?select=id' + (filter ? '&' + filter : ''), true);
+    xhr.setRequestHeader('apikey', SUPABASE_KEY);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
+    xhr.setRequestHeader('Prefer', 'count=exact');
+    xhr.setRequestHeader('Range', '0-0');
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== 4) return;
+      var cr = xhr.getResponseHeader('Content-Range');
+      var total = cr ? parseInt(cr.split('/')[1]) : 0;
+      cb(isNaN(total) ? 0 : total);
+    };
+    xhr.send();
+  }
+
+  getCount('accessed_at=gte.' + todayKST.toISOString(), function(cnt) {
+    document.getElementById('admin-stat-today').textContent = cnt;
   });
-  sbQuery('access_logs', '', function(e, allLogs) {
-    document.getElementById('admin-stat-total').textContent = allLogs ? allLogs.length : 0;
+  getCount('', function(cnt) {
+    document.getElementById('admin-stat-total').textContent = cnt;
   });
   sbQuery('accounts', '', function(e, accounts) {
     document.getElementById('admin-stat-users').textContent = accounts ? accounts.length : 0;
