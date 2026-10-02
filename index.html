@@ -748,7 +748,7 @@ function refreshExpiry() {
   xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.setRequestHeader('Prefer', 'return=minimal');
-  xhr.send(JSON.stringify({ expires_at: newExpires, last_login: new Date().toISOString() }));
+  xhr.send(JSON.stringify({ expires_at: newExpires }));
   startExpireCountdown(new Date(newExpires));
 }
 function startExpireCountdown(expDate) {
@@ -757,16 +757,7 @@ function startExpireCountdown(expDate) {
     var el = document.getElementById('expire-countdown');
     if (!el) return;
     var diff = expDate - new Date();
-    if (diff <= 0) {
-      clearInterval(_countdownTimer);
-      sbGet('accounts', currentUser, function(e, acc) {
-        if (e || !acc) {
-          doLogout();
-          alert('계정이 삭제되었습니다.');
-        }
-      });
-      return;
-    }
+    if (diff <= 0) { el.textContent = '⚠️ 만료됨'; return; }
     var h = Math.floor(diff / (1000*60*60));
     var m = Math.floor((diff % (1000*60*60)) / (1000*60));
     var s = Math.floor((diff % (1000*60)) / 1000);
@@ -1362,6 +1353,12 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('signup-pw2').addEventListener('keydown', function(e){ if(e.key==='Enter') doSignup(); });
 
   
+  window.addEventListener('pageshow', function(e) {
+    if (e.persisted && currentUser) {
+      loadUserData();
+    }
+  });
+
   var saved = sessionStorage.getItem('file_user');
   var savedExp = parseInt(sessionStorage.getItem('file_user_exp')||'0');
   if (saved && savedExp > Date.now()) {
@@ -1777,16 +1774,20 @@ function getSignedUrl(fileKey, cb) {
 var _isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 
 function fetchWithAuth(fileKey, name, cb) {
+  var called = false;
+  function done(err) {
+    if (called) return;
+    called = true;
+    cb(err);
+  }
   var xhr = new XMLHttpRequest();
   xhr.open('GET', SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + fileKey, true);
   xhr.setRequestHeader('apikey', SUPABASE_KEY);
   xhr.setRequestHeader('Authorization', 'Bearer ' + SUPABASE_KEY);
   xhr.responseType = 'blob';
-  xhr.onreadystatechange = function() {
-    if (xhr.readyState !== 4) return;
+  xhr.onload = function() {
     if (xhr.status >= 200 && xhr.status < 300) {
       var blob = xhr.response;
-      
       var ext = (name.split('.').pop()||'').toLowerCase();
       if (ext === 'txt') blob = new Blob([xhr.response], { type: 'text/plain;charset=utf-8' });
       var blobUrl = URL.createObjectURL(blob);
@@ -1795,12 +1796,15 @@ function fetchWithAuth(fileKey, name, cb) {
       a.download = name;
       document.body.appendChild(a); a.click();
       document.body.removeChild(a);
-      setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 1000);
-      cb(null);
+      setTimeout(function(){ URL.revokeObjectURL(blobUrl); }, 3000);
+      done(null);
     } else {
-      cb(new Error('다운로드 실패 (' + xhr.status + ')'));
+      done(new Error('다운로드 실패 (' + xhr.status + ')'));
     }
   };
+  xhr.onerror = function() { done(new Error('네트워크 오류')); };
+  xhr.ontimeout = function() { done(new Error('타임아웃')); };
+  xhr.timeout = 30000;
   xhr.send();
 }
 
@@ -1847,14 +1851,15 @@ function deleteFile(key, silent, cb) {
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) return;
-    if (f && f.dbId) sbDeleteRow('user_files', 'id=eq.' + f.dbId, function() {
-      fileList = fileList.filter(function(x){ return x.key !== key; });
-      delete selectedKeys[key];
-      renderFileList(); updateStorageInfo(); updateBulkBar();
-      showToast(silent ? '2회 다운로드로 파일이 자동 삭제되었습니다' : '삭제되었습니다');
-      if (cb) cb();
-    });
-    else {
+    if (f && f.dbId) {
+      sbDeleteRow('user_files', 'id=eq.' + f.dbId, function() {
+        fileList = fileList.filter(function(x){ return x.key !== key; });
+        delete selectedKeys[key];
+        renderFileList(); updateStorageInfo(); updateBulkBar();
+        if (!silent) showToast('삭제되었습니다');
+        if (cb) cb();
+      });
+    } else {
       fileList = fileList.filter(function(x){ return x.key !== key; });
       delete selectedKeys[key];
       renderFileList(); updateStorageInfo(); updateBulkBar();
