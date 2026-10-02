@@ -1,4 +1,4 @@
-오후 5:16 2026-10-02<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -1353,6 +1353,12 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('signup-pw2').addEventListener('keydown', function(e){ if(e.key==='Enter') doSignup(); });
 
   
+  window.addEventListener('pageshow', function(e) {
+    if (e.persisted && currentUser) {
+      loadUserData();
+    }
+  });
+
   var saved = sessionStorage.getItem('file_user');
   var savedExp = parseInt(sessionStorage.getItem('file_user_exp')||'0');
   if (saved && savedExp > Date.now()) {
